@@ -32,7 +32,7 @@ It is not:
 1. A scheduled GitHub Actions workflow (`.github/workflows/collect.yml`) runs once a day. You can also run it manually.
 2. It lists your owned repositories, applies the filters in `traffolio.config.yml`, and fetches the latest 14 days of daily views and clones for each one.
 3. The results are merged into JSON files under `data/`. Each day is overwritten (upserted) by repository ID and UTC date, so re-running never double-counts.
-4. The README dashboard (between the `TRAFFOLIO` markers) and `assets/traffic.svg` are regenerated from that JSON. Only that marked block is rewritten; the rest of this README is yours.
+4. The README dashboard (between the `TRAFFOLIO` markers), `assets/traffic.svg` and the per-repository trend images in `assets/sparklines/` are regenerated from that JSON. Only that marked block is rewritten; the rest of this README is yours.
 5. If any file changed, the workflow commits it with `GITHUB_TOKEN`. If nothing changed, there is no commit.
 
 ## Setup
@@ -63,6 +63,30 @@ For fine-grained tokens, GitHub's REST docs list **Administration: Read** as the
 | `GET /repos/{GITHUB_REPOSITORY}` | `GITHUB_TOKEN` | Check that Traffolio itself is private and is not the template |
 
 The default `GITHUB_TOKEN` cannot read other repositories' traffic, so it cannot replace the PAT. The workflow only needs `contents: write` for the commit. Notes on the API versions and behavior are in [docs/github-api-notes.md](docs/github-api-notes.md).
+
+## Local dashboard
+
+The README shows a summary. For per-repository charts, period switching (7 / 30 / 90 days / all) and sorting, generate a local dashboard from a clone of your Traffolio repository:
+
+```sh
+git clone <your Traffolio repository> && cd <it>
+npm install
+npm run dashboard   # writes dashboard.html and prints its file:// URL
+```
+
+It is a single HTML file with no external resources, so the data never leaves your machine. GitHub Pages is not an option for this: on a personal account a Pages site is always public, even from a private repository. `dashboard.html` is git-ignored because it contains your traffic data; don't commit or publish it.
+
+### Run a collection locally
+
+The same collection the workflow runs can be run from your clone, for example while Actions is unavailable:
+
+```sh
+npm run build
+TRAFFIC_TOKEN=<token> GITHUB_TOKEN=<token> GITHUB_REPOSITORY=<you>/<your Traffolio repo> node dist/cli/collect.js
+git add -A -- data assets README.md && git commit -m "chore(data): update traffic (local run)" && git push
+```
+
+`GITHUB_TOKEN` here only needs to read your Traffolio repository's metadata (the fail-closed visibility check); your fine-grained `TRAFFIC_TOKEN` works if it covers that repository. Run it at least every 14 days to avoid gaps.
 
 ## Security
 
@@ -95,6 +119,7 @@ data/
   status.json                data-through date, per-repo last success and error class
   traffic/<repo_id>/YYYY-MM.json   daily metrics for one repo and month
 assets/traffic.svg           generated README chart
+assets/sparklines/<repo_id>.svg   30-day trend shown in the README table
 ```
 
 Per-month file shape:
@@ -156,6 +181,7 @@ npm test            # unit tests
 npm run typecheck   # type check only
 npm run build       # compile to dist/
 npm run demo        # build, then regenerate docs/demo/ from fixtures/ (no GitHub access needed)
+npm run dashboard:demo  # local dashboard from fixtures/demo (writes dashboard-demo.html)
 ```
 
 `npm run demo` runs the real reporter on fake data in `fixtures/` and writes the sample images and section in `docs/demo/`.
