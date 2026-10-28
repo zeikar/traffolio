@@ -4,8 +4,8 @@
 
 | | 7d | 30d | All |
 | --- | ---: | ---: | ---: |
-| Views | 380 | 1592* | 2086* |
-| Clones | 118 | 475* | 610* |
+| Views | 380* | 1592* | 2086* |
+| Clones | 118* | 475* | 610* |
 
 | Repository | Visibility | Views 7d | Views 30d | Clones 7d | Clones 30d | Stars | Forks | Status |
 | --- | --- | ---: | ---: | ---: | ---: | ---: | ---: | --- |
@@ -13,7 +13,7 @@
 | [octo-sample/Sample-Docs](https://github.com/octo-sample/Sample-Docs) | public | — | 135* | — | 49* | 8 | 1 | forbidden since 2026-10-10 |
 | [octo-sample/sample-web](https://github.com/octo-sample/sample-web) | public | 149 | 579* | 43 | 176* | 17 | 2 | ok |
 
-\* Includes days with no stored data; the sum covers only the days we have.
+\* Includes days with no stored data, or where some repositories have none; the sum covers only the data we have.
 
 1 repository could not be collected (see data/status.json)
 

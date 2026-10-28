@@ -39,10 +39,10 @@ export function replaceSection(readme: string, section: string): string {
   return `${before}${MARKER_START}\n${section}${MARKER_END}${after}`;
 }
 
-/** `—` = no stored days at all (not zero); `*` = some days in the window have no data. */
+/** `—` = no stored days at all (not zero); `*` = some days have no data, or lack some repositories. */
 function cell(value: number | null, p: PeriodSum): string {
   if (value === null) return DASH;
-  return p.missingDays > 0 ? `${value}*` : String(value);
+  return p.missingDays > 0 || p.partialDays > 0 ? `${value}*` : String(value);
 }
 
 const views = (p: PeriodSum): string => cell(p.views, p);
@@ -94,7 +94,7 @@ export function renderSection(model: DashboardModel, opts: RenderOptions): strin
   let needsFootnote = false;
   if (totals) {
     const periods = [totals.d7, totals.d30, totals.all];
-    needsFootnote = periods.some((p) => p.missingDays > 0 && p.presentDays > 0);
+    needsFootnote = periods.some((p) => (p.missingDays > 0 || p.partialDays > 0) && p.presentDays > 0);
     out.push(
       "| | 7d | 30d | All |",
       "| --- | ---: | ---: | ---: |",
@@ -108,12 +108,12 @@ export function renderSection(model: DashboardModel, opts: RenderOptions): strin
   if (rows.length > 0) {
     out.push(...repoTable(rows), "");
     needsFootnote ||= rows.some((r) =>
-      [r.d7, r.d30].some((p) => p.missingDays > 0 && p.presentDays > 0),
+      [r.d7, r.d30].some((p) => (p.missingDays > 0 || p.partialDays > 0) && p.presentDays > 0),
     );
   }
 
   if (needsFootnote) {
-    out.push("\\* Includes days with no stored data; the sum covers only the days we have.", "");
+    out.push("\\* Includes days with no stored data, or where some repositories have none; the sum covers only the data we have.", "");
   }
   if (model.failedCount > 0) {
     out.push(

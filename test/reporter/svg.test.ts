@@ -1,6 +1,9 @@
 import { fileURLToPath } from "node:url";
 import { beforeAll, describe, expect, it } from "vitest";
-import { buildDashboardModel, type SeriesPoint } from "../../src/reporter/aggregate.js";
+import {
+  buildDashboardModel,
+  type SeriesPoint,
+} from "../../src/reporter/aggregate.js";
 import { renderTrafficSvg } from "../../src/reporter/svg.js";
 import { createStore } from "../../src/storage/store.js";
 import type { MonthFile } from "../../src/types.js";
@@ -14,24 +17,34 @@ beforeAll(async () => {
   const index = (await store.readIndex())!;
   const status = (await store.readStatus())!;
   const files: Record<string, MonthFile[]> = {};
-  for (const id of Object.keys(index.repositories)) files[id] = await store.readMonthFiles(id);
+  for (const id of Object.keys(index.repositories))
+    files[id] = await store.readMonthFiles(id);
   series = buildDashboardModel(index, status, files).series;
 });
 
 function pathData(svg: string, metric: "views" | "clones"): string {
-  const match = svg.match(new RegExp(`<path class="line ${metric}" d="([^"]*)"`));
+  const match = svg.match(
+    new RegExp(`<path class="line ${metric}" d="([^"]*)"`),
+  );
   expect(match).not.toBeNull();
   return match![1]!;
 }
 
-const count = (text: string, pattern: RegExp): number => text.match(pattern)?.length ?? 0;
+const count = (text: string, pattern: RegExp): number =>
+  text.match(pattern)?.length ?? 0;
 
 /** Number of contiguous `null` runs. */
 function gapCount(points: SeriesPoint[]): number {
-  return points.filter((p, i) => p.views === null && points[i - 1]?.views !== null).length;
+  return points.filter(
+    (p, i) => p.views === null && points[i - 1]?.views !== null,
+  ).length;
 }
 
-const point = (date: string, value: number | null, partial = false): SeriesPoint => ({
+const point = (
+  date: string,
+  value: number | null,
+  partial = false,
+): SeriesPoint => ({
   date,
   views: value,
   clones: value,
@@ -58,19 +71,32 @@ describe("renderTrafficSvg", () => {
     expect(partialDays).toBeGreaterThan(0);
     const svg = renderTrafficSvg(series, { sampleLabel: false });
     expect(count(svg, /<circle class="partial"/g)).toBe(partialDays * 2);
-    expect(svg).toContain("partial day — one or more tracked repos have no data for that date");
+    expect(svg).toContain(
+      "partial day — one or more tracked repos have no data for that date",
+    );
   });
 
   it("draws no partial markers when no day is partial", () => {
-    const full = [point("2026-01-01", 3), point("2026-01-02", 0), point("2026-01-03", 5)];
-    expect(count(renderTrafficSvg(full, { sampleLabel: false }), /<circle class="partial"/g)).toBe(
-      0,
-    );
+    const full = [
+      point("2026-01-01", 3),
+      point("2026-01-02", 0),
+      point("2026-01-03", 5),
+    ];
+    expect(
+      count(
+        renderTrafficSvg(full, { sampleLabel: false }),
+        /<circle class="partial"/g,
+      ),
+    ).toBe(0);
   });
 
   it("keeps an isolated day visible as its own subpath", () => {
     const svg = renderTrafficSvg(
-      [point("2026-01-01", null), point("2026-01-02", 4), point("2026-01-03", null)],
+      [
+        point("2026-01-01", null),
+        point("2026-01-02", 4),
+        point("2026-01-03", null),
+      ],
       { sampleLabel: false },
     );
     expect(count(pathData(svg, "views"), /M/g)).toBe(1);
@@ -78,13 +104,19 @@ describe("renderTrafficSvg", () => {
   });
 
   it("shows the sample banner only when requested", () => {
-    expect(renderTrafficSvg(series, { sampleLabel: true })).toContain("SAMPLE DATA");
-    expect(renderTrafficSvg(series, { sampleLabel: false })).not.toContain("SAMPLE DATA");
+    expect(renderTrafficSvg(series, { sampleLabel: true })).toContain(
+      "SAMPLE DATA",
+    );
+    expect(renderTrafficSvg(series, { sampleLabel: false })).not.toContain(
+      "SAMPLE DATA",
+    );
   });
 
   it("states the data date in UTC and has no script", () => {
     const svg = renderTrafficSvg(series, { sampleLabel: true });
-    expect(svg).toContain("Data through 2026-10-25 (UTC) · daily totals across tracked repos");
+    expect(svg).toContain(
+      "Data through 2026-10-25 (UTC) · daily totals across tracked repos",
+    );
     expect(svg).not.toMatch(/<script/i);
   });
 

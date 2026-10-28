@@ -1,6 +1,9 @@
 import { fileURLToPath } from "node:url";
 import { beforeAll, describe, expect, it } from "vitest";
-import { buildDashboardModel, type DashboardModel } from "../../src/reporter/aggregate.js";
+import {
+  buildDashboardModel,
+  type DashboardModel,
+} from "../../src/reporter/aggregate.js";
 import {
   MARKER_END,
   MARKER_START,
@@ -20,12 +23,14 @@ beforeAll(async () => {
   const index = (await store.readIndex())!;
   const status = (await store.readStatus())!;
   const files: Record<string, MonthFile[]> = {};
-  for (const id of Object.keys(index.repositories)) files[id] = await store.readMonthFiles(id);
+  for (const id of Object.keys(index.repositories))
+    files[id] = await store.readMonthFiles(id);
   model = buildDashboardModel(index, status, files);
 });
 
 const opts = { svgPath: "./traffic.svg", sampleLabel: false };
-const rowLine = (s: string, name: string) => s.split("\n").find((l) => l.includes(`/${name}]`))!;
+const rowLine = (s: string, name: string) =>
+  s.split("\n").find((l) => l.includes(`/${name}]`))!;
 
 describe("renderSection", () => {
   it("has the data-through heading, totals, failed line, image and notes", () => {
@@ -33,7 +38,9 @@ describe("renderSection", () => {
     expect(s).toContain(`Data through ${model.dataThroughDate} (UTC)`);
     expect(s).toContain("| Views |");
     expect(s).toContain("| Clones |");
-    expect(s).toContain("1 repository could not be collected (see data/status.json)");
+    expect(s).toContain(
+      "1 repository could not be collected (see data/status.json)",
+    );
     expect(s).toContain("not unique users");
     expect(s).toContain("(https://github.com/");
     expect(s).not.toMatch(/\d{2}:\d{2}:\d{2}/);
@@ -54,15 +61,23 @@ describe("renderSection", () => {
     expect(s).toContain("\\* Includes days with no stored data");
   });
 
+  it("marks the 7d totals incomplete because one tracked repo lacks those dates", () => {
+    expect(model.totals!.d7.missingDays).toBe(0);
+    expect(renderSection(model, opts)).toMatch(/\| Views \| 380\* \|/);
+    expect(renderSection(model, opts)).toMatch(/\| Clones \| 118\* \|/);
+  });
+
   it("toggles the sample caption", () => {
-    expect(renderSection(model, { ...opts, sampleLabel: true })).toContain("Sample data");
+    expect(renderSection(model, { ...opts, sampleLabel: true })).toContain(
+      "Sample data",
+    );
     expect(renderSection(model, opts)).not.toContain("Sample data");
   });
 
   it("embeds the image path verbatim", () => {
-    expect(renderSection(model, { ...opts, svgPath: "docs/a b/x.svg" })).toContain(
-      "![Traffic over the last 30 days](docs/a b/x.svg)",
-    );
+    expect(
+      renderSection(model, { ...opts, svgPath: "docs/a b/x.svg" }),
+    ).toContain("![Traffic over the last 30 days](docs/a b/x.svg)");
   });
 
   it("renders the no-data heading without a totals table", () => {
@@ -73,8 +88,20 @@ describe("renderSection", () => {
       series: [],
       rows: model.rows.map((r) => ({
         ...r,
-        d7: { views: null, clones: null, presentDays: 0, missingDays: 0 },
-        d30: { views: null, clones: null, presentDays: 0, missingDays: 0 },
+        d7: {
+          views: null,
+          clones: null,
+          presentDays: 0,
+          missingDays: 0,
+          partialDays: 0,
+        },
+        d30: {
+          views: null,
+          clones: null,
+          presentDays: 0,
+          missingDays: 0,
+          partialDays: 0,
+        },
       })),
     };
     const s = renderSection(empty, opts);
@@ -116,8 +143,12 @@ describe("markers", () => {
     expect(() => assertMarkers("nothing")).toThrow(MarkerError);
     expect(() => assertMarkers(`${MARKER_START}\n`)).toThrow(MarkerError);
     expect(() => assertMarkers(`${MARKER_END}\n`)).toThrow(MarkerError);
-    expect(() => assertMarkers(`${MARKER_START}${MARKER_START}${MARKER_END}`)).toThrow(MarkerError);
-    expect(() => assertMarkers(`${MARKER_END}${MARKER_START}`)).toThrow(MarkerError);
+    expect(() =>
+      assertMarkers(`${MARKER_START}${MARKER_START}${MARKER_END}`),
+    ).toThrow(MarkerError);
+    expect(() => assertMarkers(`${MARKER_END}${MARKER_START}`)).toThrow(
+      MarkerError,
+    );
     expect(() => replaceSection("x", section)).toThrow(MarkerError);
   });
 });

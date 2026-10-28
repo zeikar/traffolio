@@ -10,7 +10,12 @@ import {
   type DayMap,
 } from "../../src/reporter/aggregate.js";
 import { createStore } from "../../src/storage/store.js";
-import type { DayMetrics, IndexFile, MonthFile, StatusFile } from "../../src/types.js";
+import type {
+  DayMetrics,
+  IndexFile,
+  MonthFile,
+  StatusFile,
+} from "../../src/types.js";
 
 const demoRoot = fileURLToPath(new URL("../../fixtures/demo", import.meta.url));
 const GAP = ["2026-10-03", "2026-10-04", "2026-10-05", "2026-10-06"];
@@ -21,7 +26,8 @@ const m = (views: number, clones: number): DayMetrics => ({
   clones,
   uniqueCloners: 0,
 });
-const dayMap = (entries: Record<string, DayMetrics>): DayMap => new Map(Object.entries(entries));
+const dayMap = (entries: Record<string, DayMetrics>): DayMap =>
+  new Map(Object.entries(entries));
 
 let index: IndexFile;
 let status: StatusFile;
@@ -33,7 +39,8 @@ beforeAll(async () => {
   index = (await store.readIndex())!;
   status = (await store.readStatus())!;
   files = {};
-  for (const id of Object.keys(index.repositories)) files[id] = await store.readMonthFiles(id);
+  for (const id of Object.keys(index.repositories))
+    files[id] = await store.readMonthFiles(id);
   model = buildDashboardModel(index, status, files);
 });
 
@@ -49,19 +56,25 @@ describe("daysFromMonthFiles", () => {
 
 describe("sumPeriod", () => {
   it("counts zero days as present and absent keys as missing, without changing sums", () => {
-    const withZero = dayMap({ "2026-01-01": m(3, 1), "2026-01-02": m(0, 0), "2026-01-03": m(4, 2) });
+    const withZero = dayMap({
+      "2026-01-01": m(3, 1),
+      "2026-01-02": m(0, 0),
+      "2026-01-03": m(4, 2),
+    });
     const withGap = dayMap({ "2026-01-01": m(3, 1), "2026-01-03": m(4, 2) });
     expect(sumPeriod(withZero, "2026-01-03", 3)).toEqual({
       views: 7,
       clones: 3,
       presentDays: 3,
       missingDays: 0,
+      partialDays: 0,
     });
     expect(sumPeriod(withGap, "2026-01-03", 3)).toEqual({
       views: 7,
       clones: 3,
       presentDays: 2,
       missingDays: 1,
+      partialDays: 0,
     });
   });
 
@@ -72,12 +85,14 @@ describe("sumPeriod", () => {
       clones: null,
       presentDays: 0,
       missingDays: 7,
+      partialDays: 0,
     });
     expect(sumPeriod(new Map(), "2026-01-10", "all")).toEqual({
       views: null,
       clones: null,
       presentDays: 0,
       missingDays: 0,
+      partialDays: 0,
     });
   });
 
@@ -88,6 +103,7 @@ describe("sumPeriod", () => {
       clones: 1,
       presentDays: 2,
       missingDays: 4,
+      partialDays: 0,
     });
   });
 
@@ -106,6 +122,7 @@ describe("periodTotals / dailySeries", () => {
       clones: 1,
       presentDays: 2,
       missingDays: 1,
+      partialDays: 2,
     });
   });
 
@@ -126,8 +143,14 @@ describe("buildDashboardModel on the demo store", () => {
     expect(model.series).toHaveLength(30);
     expect(model.series[0]!.date).toBe("2026-09-26");
     expect(model.series.at(-1)!.date).toBe("2026-10-25");
-    // 2026-10-19..25: every day has at least one tracked key.
-    expect(model.totals!.d7).toEqual({ views: 380, clones: 118, presentDays: 7, missingDays: 0 });
+    // 2026-10-19..25: every day has a tracked key, but the forbidden repo lacks all of them.
+    expect(model.totals!.d7).toEqual({
+      views: 380,
+      clones: 118,
+      presentDays: 7,
+      missingDays: 0,
+      partialDays: 7,
+    });
   });
 
   it("the shared gap is null in the series and raises missingDays without changing sums", () => {
@@ -140,25 +163,61 @@ describe("buildDashboardModel on the demo store", () => {
       });
     }
     const d30 = model.totals!.d30;
-    expect(d30).toEqual({ views: 1592, clones: 475, presentDays: 26, missingDays: 4 });
+    expect(d30).toEqual({
+      views: 1592,
+      clones: 475,
+      presentDays: 26,
+      missingDays: 4,
+      partialDays: 16,
+    });
     const seriesViews = model.series.reduce((s, p) => s + (p.views ?? 0), 0);
     const seriesClones = model.series.reduce((s, p) => s + (p.clones ?? 0), 0);
     expect([seriesViews, seriesClones]).toEqual([d30.views, d30.clones]);
-    expect(model.totals!.all).toEqual({ views: 2086, clones: 610, presentDays: 32, missingDays: 4 });
+    expect(model.totals!.all).toEqual({
+      views: 2086,
+      clones: 610,
+      presentDays: 32,
+      missingDays: 4,
+      partialDays: 16,
+    });
   });
 
   it("zero days count as present", () => {
     const cli = model.rows.find((r) => r.id === "100001")!;
     // sample-cli has 2026-10-14 = 0/0 and 2026-10-25 = 0 views; both are present.
-    expect(cli.d7).toEqual({ views: 231, clones: 75, presentDays: 7, missingDays: 0 });
-    expect(cli.d30).toEqual({ views: 878, clones: 250, presentDays: 26, missingDays: 4 });
+    expect(cli.d7).toEqual({
+      views: 231,
+      clones: 75,
+      presentDays: 7,
+      missingDays: 0,
+      partialDays: 0,
+    });
+    expect(cli.d30).toEqual({
+      views: 878,
+      clones: 250,
+      presentDays: 26,
+      missingDays: 4,
+      partialDays: 0,
+    });
   });
 
   it("the forbidden repo stops contributing after 2026-10-09 and makes later days partial", () => {
     const docs = model.rows.find((r) => r.id === "100003")!;
     expect(docs.lastError).toEqual({ kind: "forbidden", date: "2026-10-10" });
-    expect(docs.d7).toEqual({ views: null, clones: null, presentDays: 0, missingDays: 7 });
-    expect(docs.d30).toEqual({ views: 135, clones: 49, presentDays: 10, missingDays: 20 });
+    expect(docs.d7).toEqual({
+      views: null,
+      clones: null,
+      presentDays: 0,
+      missingDays: 7,
+      partialDays: 0,
+    });
+    expect(docs.d30).toEqual({
+      views: 135,
+      clones: 49,
+      presentDays: 10,
+      missingDays: 20,
+      partialDays: 0,
+    });
     expect(model.failedCount).toBe(1);
 
     for (const p of model.series) {
@@ -167,8 +226,13 @@ describe("buildDashboardModel on the demo store", () => {
       expect(p.views, p.date).not.toBeNull();
     }
     // After 2026-10-09 the totals equal the two healthy repos alone.
-    const healthy = ["100001", "100002"].map((id) => daysFromMonthFiles(files[id]!));
-    expect(model.totals!.d7).toEqual(periodTotals(healthy, "2026-10-25").d7);
+    const healthy = ["100001", "100002"].map((id) =>
+      daysFromMonthFiles(files[id]!),
+    );
+    expect(model.totals!.d7).toEqual({
+      ...periodTotals(healthy, "2026-10-25").d7,
+      partialDays: 7,
+    });
   });
 
   it("orders rows by fullName case-insensitively and carries metadata", () => {
@@ -210,7 +274,11 @@ describe("buildDashboardModel on the demo store", () => {
 
 describe("buildDashboardModel without data", () => {
   it("an index with repos but no month files yields the no-data model", () => {
-    const empty: StatusFile = { schemaVersion: 1, dataThroughDate: null, repositories: {} };
+    const empty: StatusFile = {
+      schemaVersion: 1,
+      dataThroughDate: null,
+      repositories: {},
+    };
     const got = buildDashboardModel(index, empty, {});
     expect(got.dataThroughDate).toBeNull();
     expect(got.totals).toBeNull();
@@ -219,7 +287,13 @@ describe("buildDashboardModel without data", () => {
     expect(got.rows).toHaveLength(3);
     for (const row of got.rows) {
       for (const cell of [row.d7, row.d30]) {
-        expect(cell).toEqual({ views: null, clones: null, presentDays: 0, missingDays: 0 });
+        expect(cell).toEqual({
+          views: null,
+          clones: null,
+          presentDays: 0,
+          missingDays: 0,
+          partialDays: 0,
+        });
       }
     }
   });

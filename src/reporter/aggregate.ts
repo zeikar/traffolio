@@ -20,6 +20,8 @@ export interface PeriodSum {
   clones: number | null;
   presentDays: number;
   missingDays: number;
+  /** Present dates where some tracked repos have no key (multi-repo sums only). */
+  partialDays: number;
 }
 
 export interface PeriodTotals {
@@ -68,6 +70,7 @@ const noData = (missingDays = 0): PeriodSum => ({
   clones: null,
   presentDays: 0,
   missingDays,
+  partialDays: 0,
 });
 
 export function daysFromMonthFiles(files: MonthFile[]): DayMap {
@@ -108,8 +111,8 @@ function dayTotals(repos: DayMap[], date: string): SeriesPoint {
 
 /**
  * Totals over the inclusive [start, end] range. A date counts as present if at
- * least one repo has a key for it, missing otherwise; partial dates are
- * surfaced via `dailySeries`, not here.
+ * least one repo has a key for it, missing otherwise; partial dates also
+ * count in `partialDays` so totals can be flagged incomplete.
  */
 function sumRange(repos: DayMap[], start: string | undefined, end: string): PeriodSum {
   if (start === undefined || start > end) return noData();
@@ -117,6 +120,7 @@ function sumRange(repos: DayMap[], start: string | undefined, end: string): Peri
   let clones = 0;
   let presentDays = 0;
   let missingDays = 0;
+  let partialDays = 0;
   for (const date of enumerateDates(start, end)) {
     const day = dayTotals(repos, date);
     if (day.views === null || day.clones === null) {
@@ -126,9 +130,10 @@ function sumRange(repos: DayMap[], start: string | undefined, end: string): Peri
     views += day.views;
     clones += day.clones;
     presentDays++;
+    if (day.partial) partialDays++;
   }
   if (presentDays === 0) return noData(missingDays);
-  return { views, clones, presentDays, missingDays };
+  return { views, clones, presentDays, missingDays, partialDays };
 }
 
 /**

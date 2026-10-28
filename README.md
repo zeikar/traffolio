@@ -133,7 +133,7 @@ Per-month file shape:
 
 Matching rules:
 
-- Patterns are globs matched against the repository **name** only (no owner), and matching is case-insensitive.
+- Patterns are globs matched against the repository **name** only (no owner), matching is case-insensitive, and dot-prefixed names like `.github` match `*`.
 - Traffolio itself is recognized by its repository ID (from `GITHUB_REPOSITORY`), not by name.
 - Only repositories owned by the token's account are candidates; repositories you merely contribute to are ignored.
 

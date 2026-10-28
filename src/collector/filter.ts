@@ -14,7 +14,7 @@ export function selectRepositories(
 ): { selected: RepoMeta[]; excluded: ExcludedRepo[] } {
   const rules = config.repositories;
   const matches = (name: string, patterns: string[]) =>
-    patterns.some((p) => minimatch(name, p, { nocase: true }));
+    patterns.some((p) => minimatch(name, p, { nocase: true, dot: true }));
 
   const selected: RepoMeta[] = [];
   const excluded: ExcludedRepo[] = [];
