@@ -7,6 +7,8 @@
     "test": "vitest run --passWithNoTests",
     "demo": "npm run build && node dist/cli/demo.js",
     "collect": "node dist/cli/collect.js",
+    "dashboard": "npm run build && node dist/cli/dashboard.js",
+    "dashboard:demo": "npm run build && node dist/cli/dashboard.js --data fixtures/demo --out dashboard-demo.html",
     "check": "npm run typecheck && npm test && npm run build && npm run demo && git diff --exit-code -- docs/demo"
   },
   "license": "MIT",
