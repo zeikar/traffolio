@@ -1,0 +1,14 @@
+repositories:
+  # Glob patterns (minimatch) matched against the repository name, case-insensitive.
+  include: ["*"]
+  # Same matching as include; exclude always wins over include.
+  exclude: ["test-*", "playground-*"]
+  # Collect private repositories too.
+  include_private: false
+  # Collect forks.
+  include_forks: false
+  # Collect archived repositories.
+  include_archived: false
+  # Collect the Traffolio repository itself (identified by ID via GITHUB_REPOSITORY,
+  # not by name). Still subject to include_private, since Traffolio is private.
+  include_self: false

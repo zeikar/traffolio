@@ -4,6 +4,7 @@
     "moduleResolution": "nodenext",
     "target": "es2022",
     "strict": true,
+    "types": ["node"],
     "verbatimModuleSyntax": true,
     "rootDir": "src",
     "outDir": "dist",
