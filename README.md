@@ -171,4 +171,4 @@ npm run demo        # build, then regenerate docs/demo/ from fixtures/ (no GitHu
 
 ## License
 
-See [LICENSE](LICENSE). The full product specification is in [Traffolio_MVP.md](Traffolio_MVP.md).
+See [LICENSE](LICENSE).

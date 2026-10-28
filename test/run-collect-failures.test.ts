@@ -7,7 +7,7 @@ import { runCollect } from "../src/run-collect.js";
 import type { CollectResult } from "../src/run-collect.js";
 import type { IndexFile, MonthFile, StatusFile } from "../src/types.js";
 
-// Failure handling, exit codes, 0-vs-missing and idempotence of runCollect (Traffolio_MVP.md §6, §12).
+// Failure handling, exit codes, 0-vs-missing and idempotence of runCollect (README › Security, Data).
 
 // ---------------------------------------------------------------------------
 // Fixtures and canned responses

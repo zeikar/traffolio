@@ -1,6 +1,6 @@
 # Traffolio daily collection.
 #
-# Exit codes of `node dist/cli/collect.js` (Traffolio_MVP.md §6):
+# Exit codes of `node dist/cli/collect.js` (see README › Security):
 #   0  ok, or template-repo skip (outcome=ok|skipped): nothing failed.
 #   1  fatal (outcome=fatal): nothing was written; no commit; job fails.
 #   2  partial (outcome=partial): some data was written and IS committed and

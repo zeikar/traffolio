@@ -23,6 +23,7 @@ Checked 2026-10-28. All planned facts were confirmed; no deviations from the pla
 - 2026-10-28 https://docs.github.com/en/actions/reference/workflows-and-actions/events-that-trigger-workflows#schedule : cron is UTC, delayed under load at the top of the hour (use a non-zero minute), runs only on the default branch; scheduled workflows in public repos are auto-disabled after 60 days without repo activity.
 - 2026-10-28 https://docs.github.com/en/actions/concepts/security/github_token : events from `GITHUB_TOKEN` (e.g. its pushes) do not trigger new workflow runs (except `workflow_dispatch`/`repository_dispatch`). Only `permissions: contents: write` is needed; metadata read is implicit.
 
-## Fixture basis (`per=day`, from Traffolio_MVP.md section 6)
+## Fixture basis (`per=day`, measured live)
 - Measured 2026-10-27 01:48 UTC: 14 contiguous entries, zero days included as `{"count":0,"uniques":0}`; range `2026-10-12` to `2026-10-25`, i.e. ends two UTC days before the run date (today and yesterday absent).
+- Measured 2026-10-28 06:46 UTC across 51 repos: windows ended one or two UTC days before the run date and differed between repositories (e.g. `2026-10-13..2026-10-26` vs `2026-10-14..2026-10-27`).
 - The window always comes from the response (first to last timestamp), never assumed.
