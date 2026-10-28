@@ -6,7 +6,8 @@
     "typecheck": "tsc --noEmit -p tsconfig.json",
     "test": "vitest run --passWithNoTests",
     "demo": "npm run build && node dist/cli/demo.js",
-    "collect": "node dist/cli/collect.js"
+    "collect": "node dist/cli/collect.js",
+    "check": "npm run typecheck && npm test && npm run build && npm run demo && git diff --exit-code -- docs/demo"
   },
   "license": "MIT",
   "type": "module",

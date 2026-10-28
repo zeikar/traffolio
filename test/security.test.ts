@@ -1,0 +1,178 @@
+import { readFileSync } from "node:fs";
+import { mkdtemp, readFile, readdir, rm, writeFile } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { runCollect } from "../src/run-collect.js";
+
+const repoRoot = new URL("..", import.meta.url).pathname;
+
+function fixtureText(name: string): string {
+  return readFileSync(join(repoRoot, "fixtures/api", `${name}.json`), "utf8");
+}
+
+const TRAFFIC_TOKEN = "github_pat_SENTINEL_TRAFFIC";
+const GITHUB_TOKEN = "ghs_SENTINEL_ACTIONS";
+// Full tokens plus fragments, so a truncated or re-wrapped leak is caught too.
+const SENTINELS = [TRAFFIC_TOKEN, GITHUB_TOKEN, "SENTINEL_TRAFFIC", "SENTINEL_ACTIONS", "BODY_SENTINEL"];
+
+const CONFIG = `repositories:
+  include: ["*"]
+  exclude: ["test-*"]
+`;
+const README = `# Hello
+
+<!-- TRAFFOLIO:START -->
+placeholder
+<!-- TRAFFOLIO:END -->
+`;
+const PAGE2_URL = "https://api.github.com/user/repos?affiliation=owner&per_page=100&page=2";
+
+type Override = (url: URL) => Response | undefined;
+
+function route(url: URL, override: Override): Response {
+  const forced = override(url);
+  if (forced) return forced;
+  const ok = (text: string, headers: Record<string, string> = {}) => new Response(text, { status: 200, headers });
+  const path = url.pathname;
+  if (path === "/repos/octo-sample/traffolio") return ok(fixtureText("self-repo-private"));
+  if (path === "/user") return ok(fixtureText("user"));
+  if (path === "/user/repos") {
+    return url.searchParams.get("page") === "2"
+      ? ok(fixtureText("user-repos-page-2"))
+      : ok(fixtureText("user-repos-page-1"), { link: `<${PAGE2_URL}>; rel="next"` });
+  }
+  if (/^\/repos\/octo-sample\/[^/]+\/traffic\/views$/.test(path)) return ok(fixtureText("traffic-views"));
+  if (/^\/repos\/octo-sample\/[^/]+\/traffic\/clones$/.test(path)) return ok(fixtureText("traffic-clones"));
+  return new Response("{}", { status: 404 });
+}
+
+const isTraffic = (url: URL) => /\/traffic\/(views|clones)$/.test(url.pathname);
+const failing = (status: number, match: (url: URL) => boolean): Override => (url) =>
+  match(url) ? new Response(JSON.stringify({ message: "BODY_SENTINEL" }), { status }) : undefined;
+
+async function filesUnder(dir: string): Promise<string[]> {
+  const entries = await readdir(dir, { recursive: true, withFileTypes: true });
+  return entries.filter((e) => e.isFile()).map((e) => join(e.parentPath, e.name));
+}
+
+let root: string;
+let actionsDir: string;
+beforeEach(async () => {
+  root = await mkdtemp(join(tmpdir(), "traffolio-sec-"));
+  actionsDir = await mkdtemp(join(tmpdir(), "traffolio-sec-actions-"));
+  await writeFile(join(root, "traffolio.config.yml"), CONFIG);
+  await writeFile(join(root, "README.md"), README);
+});
+afterEach(async () => {
+  await rm(root, { recursive: true, force: true });
+  await rm(actionsDir, { recursive: true, force: true });
+});
+
+async function runAndCollectOutputs(override: Override) {
+  const fetch = vi.fn<typeof globalThis.fetch>(async (input) => route(new URL(String(input)), override));
+  const sleeps: number[] = [];
+  const lines: string[] = [];
+  const outputFile = join(actionsDir, "output");
+  const summaryFile = join(actionsDir, "summary");
+  const result = await runCollect({
+    env: {
+      GITHUB_TOKEN,
+      GITHUB_REPOSITORY: "octo-sample/traffolio",
+      TRAFFIC_TOKEN,
+      GITHUB_OUTPUT: outputFile,
+      GITHUB_STEP_SUMMARY: summaryFile,
+    },
+    fetch,
+    sleep: async (ms) => {
+      sleeps.push(ms);
+    },
+    rootDir: root,
+    now: () => Date.parse("2026-10-27T03:37:12Z"),
+    log: (line) => lines.push(line),
+  });
+
+  const texts: Record<string, string> = { log: lines.join("\n") };
+  for (const file of [outputFile, summaryFile]) texts[file] = await readFile(file, "utf8");
+  for (const file of await filesUnder(root)) texts[file] = await readFile(file, "utf8");
+  return { fetch, result, sleeps, texts };
+}
+
+function expectNoSentinel(texts: Record<string, string>) {
+  for (const [name, text] of Object.entries(texts)) {
+    for (const sentinel of SENTINELS) {
+      expect(text, `${sentinel} leaked into ${name}`).not.toContain(sentinel);
+    }
+  }
+}
+
+function authFor(fetch: ReturnType<typeof vi.fn<typeof globalThis.fetch>>, match: (url: URL) => boolean) {
+  const calls = fetch.mock.calls.filter(([input]) => match(new URL(String(input))));
+  expect(calls.length).toBeGreaterThan(0);
+  return calls.map(([, init]) => new Headers(init?.headers).get("authorization"));
+}
+
+describe("token and response-body hygiene", () => {
+  it("happy path leaks no token", async () => {
+    const { fetch, result, texts } = await runAndCollectOutputs(() => undefined);
+    expect(result.outcome).toBe("ok");
+    expect(authFor(fetch, isTraffic).every((a) => a === `Bearer ${TRAFFIC_TOKEN}`)).toBe(true);
+    expectNoSentinel(texts);
+  });
+
+  it("401 on a traffic endpoint leaks neither token nor body", async () => {
+    const { fetch, result, texts } = await runAndCollectOutputs(failing(401, isTraffic));
+    expect(result).toMatchObject({ outcome: "fatal", exitCode: 1 });
+    expect(authFor(fetch, isTraffic)[0]).toBe(`Bearer ${TRAFFIC_TOKEN}`);
+    expectNoSentinel(texts);
+  });
+
+  it("401 on /user leaks neither token nor body", async () => {
+    const { fetch, result, texts } = await runAndCollectOutputs(failing(401, (u) => u.pathname === "/user"));
+    expect(result).toMatchObject({ outcome: "fatal", exitCode: 1 });
+    expect(authFor(fetch, (u) => u.pathname === "/user")[0]).toBe(`Bearer ${TRAFFIC_TOKEN}`);
+    expectNoSentinel(texts);
+  });
+
+  it("500 on every traffic call (after retries) leaks neither token nor body", async () => {
+    const { fetch, result, sleeps, texts } = await runAndCollectOutputs(failing(500, isTraffic));
+    expect(result.outcome).toBe("fatal");
+    expect(sleeps.length).toBeGreaterThan(0);
+    expect(authFor(fetch, isTraffic).every((a) => a === `Bearer ${TRAFFIC_TOKEN}`)).toBe(true);
+    expectNoSentinel(texts);
+  });
+
+  it("500 on one repo only (partial run) leaks neither token nor body", async () => {
+    const { result, sleeps, texts } = await runAndCollectOutputs(
+      failing(500, (u) => u.pathname === "/repos/octo-sample/sample-cli/traffic/views"),
+    );
+    expect(result.outcome).toBe("partial");
+    expect(sleeps.length).toBeGreaterThan(0);
+    expectNoSentinel(texts);
+  });
+});
+
+describe("sample/real data separation", () => {
+  it("no file under fixtures/ or docs/demo/ mentions the owner's handle", async () => {
+    const files = [...(await filesUnder(join(repoRoot, "fixtures"))), ...(await filesUnder(join(repoRoot, "docs/demo")))];
+    expect(files.length).toBeGreaterThan(0);
+    for (const file of files) {
+      expect((await readFile(file, "utf8")).toLowerCase(), file).not.toContain("zeikar");
+    }
+  });
+
+  it("docs/demo/traffic.svg is labelled SAMPLE DATA", async () => {
+    expect(await readFile(join(repoRoot, "docs/demo/traffic.svg"), "utf8")).toContain("SAMPLE DATA");
+  });
+
+  it("demo CLI reads only fixtures/demo, never the repo-root data/", async () => {
+    const source = await readFile(join(repoRoot, "src/cli/demo.ts"), "utf8");
+    // Static check: every store the demo reads from must be rooted at fixtures/demo. The only
+    // other store is the repo root, used solely to write docs/demo/* outputs.
+    expect(source).toMatch(/createStore\(join\(repoRoot, "fixtures", "demo"\)\)/);
+    const out = source.match(/const out = createStore\(repoRoot\);/);
+    expect(out).not.toBeNull();
+    expect(source).not.toMatch(/\bout\.(read\w+)\(/);
+    expect(join(repoRoot, "fixtures/demo/data")).not.toBe(join(repoRoot, "data"));
+  });
+});
