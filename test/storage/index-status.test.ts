@@ -144,6 +144,39 @@ describe("updateStatus", () => {
     expect(out.dataThroughDate).toBe("2026-01-14");
   });
 
+  it("keeps the start date of a repeating error and resets it when the kind changes", () => {
+    const prev: StatusFile = {
+      schemaVersion: 1,
+      dataThroughDate: "2026-01-10",
+      repositories: {
+        "1": {
+          lastSuccessDate: "2026-01-09",
+          lastError: { kind: "forbidden", date: "2026-01-10" },
+        },
+      },
+    };
+    const same = updateStatus(prev, [{ repoId: 1, outcome: "error", kind: "forbidden" }], "2026-01-15");
+    expect(same.repositories["1"]?.lastError).toEqual({ kind: "forbidden", date: "2026-01-10" });
+    const changed = updateStatus(prev, [{ repoId: 1, outcome: "error", kind: "not_found" }], "2026-01-15");
+    expect(changed.repositories["1"]?.lastError).toEqual({ kind: "not_found", date: "2026-01-15" });
+  });
+
+  it("dataThroughDate is the earliest window end among this run's successes", () => {
+    const prev: StatusFile = { schemaVersion: 1, dataThroughDate: "2026-01-20", repositories: {} };
+    const out = updateStatus(
+      prev,
+      [ok(1, "2026-01-26"), ok(2, "2026-01-27"), { repoId: 3, outcome: "error", kind: "forbidden" }],
+      "2026-01-28",
+    );
+    expect(out.dataThroughDate).toBe("2026-01-26");
+  });
+
+  it("dataThroughDate can move back when a later-ending repo is no longer collected", () => {
+    const prev: StatusFile = { schemaVersion: 1, dataThroughDate: "2026-01-28", repositories: {} };
+    const out = updateStatus(prev, [ok(1, "2026-01-27")], "2026-01-29");
+    expect(out.dataThroughDate).toBe("2026-01-27");
+  });
+
   it("window:null success leaves lastSuccessDate and dataThroughDate", () => {
     const prev: StatusFile = {
       schemaVersion: 1,

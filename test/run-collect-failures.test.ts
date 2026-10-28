@@ -541,6 +541,37 @@ describe("zero vs missing", () => {
 });
 
 // ---------------------------------------------------------------------------
+// Data-through date when windows end on different days per repository
+// ---------------------------------------------------------------------------
+
+describe("data-through date", () => {
+  it("is the earliest window end, so the newest stored day is not a permanent partial", async () => {
+    // As measured live: one repository's window ends a day later than the others.
+    const shifted = (kind: "views" | "clones"): Handler => () =>
+      traffic(kind, (points) =>
+        points.map((p) => ({ ...p, timestamp: new Date(Date.parse(p.timestamp) + 86_400_000).toISOString() })),
+      );
+    const r = await run({
+      routes: {
+        [trafficPath("sample-web", "views")]: shifted("views"),
+        [trafficPath("sample-web", "clones")]: shifted("clones"),
+      },
+    });
+    expect(r.result).toEqual({ exitCode: 0, outcome: "ok", commit: true, dataThroughDate: "2026-10-25" });
+    expect((await readJson<MonthFile>("data/traffic/100002/2026-10.json")).days["2026-10-26"]).toBeDefined();
+
+    const readme = await readText("README.md");
+    expect(readme).toContain("Data through 2026-10-25 (UTC)");
+    const viewsTotals = readme.split("\n").find((l) => l.startsWith("| Views |"));
+    expect(viewsTotals?.split("|")[2]?.trim()).toMatch(/^\d+$/); // 7d total complete: no "*"
+
+    // Only the first-run start edge (2026-10-12, before sample-web's window) is partial.
+    const svg = await readText("assets/traffic.svg");
+    expect(countMatches(svg, /<circle class="partial"/g)).toBe(1 * 2);
+  });
+});
+
+// ---------------------------------------------------------------------------
 // Responses without a traffic window, and nothing selected
 // ---------------------------------------------------------------------------
 

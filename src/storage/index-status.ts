@@ -61,6 +61,15 @@ export function updateIndex(
   return { schemaVersion: 1, repositories: sortedRecord(next) };
 }
 
+/**
+ * `dataThroughDate` is the last date every repository collected in this run has
+ * data for (the earliest window end): GitHub's windows end on different days per
+ * repository, and the latest one would leave the newest day permanently partial.
+ * Failed repositories don't hold it back. Without any window it stays as before.
+ *
+ * `lastError.date` is when the current error started; it is kept while the same
+ * kind repeats, so a long outage reads as such and doesn't rewrite status daily.
+ */
 export function updateStatus(
   prev: StatusFile | undefined,
   results: RepoResult[],
@@ -70,7 +79,7 @@ export function updateStatus(
   for (const [key, status] of Object.entries(prev?.repositories ?? {})) {
     next.set(key, { ...status });
   }
-  let dataThroughDate = prev?.dataThroughDate ?? null;
+  let earliestEnd: string | null = null;
 
   for (const result of results) {
     const key = String(result.repoId);
@@ -79,15 +88,15 @@ export function updateStatus(
       lastError: null,
     };
     if (result.outcome === "error") {
-      status.lastError = { kind: result.kind, date: runDate };
+      if (status.lastError?.kind !== result.kind) {
+        status.lastError = { kind: result.kind, date: runDate };
+      }
     } else {
       status.lastError = null;
       if (result.window) {
         const end = result.window.end;
         status.lastSuccessDate = end;
-        if (dataThroughDate === null || end > dataThroughDate) {
-          dataThroughDate = end;
-        }
+        if (earliestEnd === null || end < earliestEnd) earliestEnd = end;
       }
     }
     next.set(key, status);
@@ -95,7 +104,7 @@ export function updateStatus(
 
   return {
     schemaVersion: 1,
-    dataThroughDate,
+    dataThroughDate: earliestEnd ?? prev?.dataThroughDate ?? null,
     repositories: sortedRecord(next),
   };
 }

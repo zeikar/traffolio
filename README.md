@@ -111,7 +111,7 @@ Per-month file shape:
 ```
 
 - **Present vs missing.** A date key in `days` means it was collected, even when every value is `0`. No key means missing: the day was never collected (failed run, no permission, or a gap longer than 14 days). Missing days are never summed as zero or interpolated; the dashboard shows them as `—`.
-- **Data-through date, not run date.** The Traffic API lags by about two days, so the README shows the latest stored date as "data through", not today's date.
+- **Data-through date, not run date.** The Traffic API lags by one to two days, and its 14-day window ends on different days for different repositories. "Data through" is the last date that every repository collected in the latest run has data for, so the newest day shown is complete; a later day from a faster repository is stored and appears on a following run.
 - **UTC only.** All dates and periods are UTC. There is no timezone setting.
 - **Events, not people.** Totals are event counts summed across the tracked repositories. Daily unique counts are stored but are not added across days or repositories, so there is no "monthly unique visitors". CI checkouts of your repositories can count as clones.
 - **Stars and forks are snapshots** taken at collection time, not a reconstructed history.
@@ -166,6 +166,7 @@ npm run demo        # build, then regenerate docs/demo/ from fixtures/ (no GitHu
 - **The run failed because the repository is public.** Make it private again. Anything committed while it was public is already exposed, so consider the history compromised and start from a fresh private repository if the data matters.
 - **The commit/push step failed (branch protection).** The workflow pushes to the default branch as `github-actions[bot]` using `GITHUB_TOKEN`. If branch protection or a ruleset requires pull requests, reviews, or status checks, that push is rejected. Allow the GitHub Actions bot to bypass the rule for this repository, or relax the rule on the default branch. Collected data from the failed run is not committed, and the next run collects it again.
 - **The push was rejected because of a concurrent push.** If you pushed at the same moment, the workflow rebases and retries once. If it still fails, just re-run the workflow.
+- **A repository's Status shows `<error> since <date>`.** The date is when that error first appeared; it stays the same while the same error repeats on later runs.
 - **A repository shows `—`.** The API returned 403/404 for it (permissions or plan), or it has not been collected yet. Check `data/status.json` for the reason, and check that the token covers that repository.
 - **Some repositories failed (exit 2).** These were transient errors such as rate limits or 5xx responses. Successful repositories were committed; re-run the workflow to retry the rest.
 
