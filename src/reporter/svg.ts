@@ -9,7 +9,7 @@ const WIDTH = 800;
 const HEIGHT = 320;
 const PLOT = { left: 64, right: 776, top: 76, bottom: 262 };
 const FOOTER_Y = 304;
-const METRICS = [
+export const METRICS = [
   { key: "views", label: "Views", color: "#0969da" },
   { key: "clones", label: "Clones", color: "#bc4c00" },
 ] as const;
@@ -107,7 +107,7 @@ function svgDocument(label: string, body: string[]): string {
 }
 
 /** Contiguous runs of indices whose value for `key` is non-null. */
-function runs(series: SeriesPoint[], key: "views" | "clones"): number[][] {
+export function runs(series: SeriesPoint[], key: "views" | "clones"): number[][] {
   const result: number[][] = [];
   let current: number[] = [];
   series.forEach((point, i) => {

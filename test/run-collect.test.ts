@@ -97,6 +97,15 @@ describe("runCollect", () => {
     expect(readme).toContain("### Traffic — Data through 2026-10-25 (UTC)");
     expect(readme).not.toContain("placeholder");
     expect((await stat(join(root, "assets/traffic.svg"))).isFile()).toBe(true);
+    expect((await readdir(join(root, "assets/sparklines"))).sort()).toEqual([
+      "100001.svg",
+      "100002.svg",
+      "100003.svg",
+    ]);
+    for (const id of ["100001", "100002", "100003"]) {
+      expect(readme).toContain(`![trend](assets/sparklines/${id}.svg)`);
+      expect(await readFile(join(root, `assets/sparklines/${id}.svg`), "utf8")).toContain('<path class="views"');
+    }
 
     expect(await readFile(outputFile, "utf8")).toBe("commit=true\noutcome=ok\ndata_through=2026-10-25\n");
 
@@ -119,5 +128,16 @@ describe("runCollect", () => {
       expect(text).not.toContain(TRAFFIC_TOKEN);
     }
     expect(lines).toContain("octo-sample/sample-cli: ok (2026-10-12..2026-10-25)");
+
+    // A same-day rerun with identical responses rewrites nothing, sparklines included.
+    const again = await runCollect({
+      env: { GITHUB_TOKEN, GITHUB_REPOSITORY: "octo-sample/traffolio", TRAFFIC_TOKEN },
+      fetch,
+      sleep: async () => {},
+      rootDir: root,
+      now: () => Date.parse("2026-10-27T09:00:00Z"),
+      log: () => {},
+    });
+    expect(again).toEqual({ exitCode: 0, outcome: "ok", commit: false, dataThroughDate: "2026-10-25" });
   });
 });

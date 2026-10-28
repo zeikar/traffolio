@@ -252,6 +252,23 @@ describe("buildDashboardModel on the demo store", () => {
     });
   });
 
+  it("gives each row its own 30-day series ending at dataThroughDate", () => {
+    for (const row of model.rows) {
+      expect(row.series).toEqual(
+        dailySeries([daysFromMonthFiles(files[row.id]!)], "2026-10-25", 30),
+      );
+    }
+    const docs = model.rows.find((r) => r.id === "100003")!;
+    expect(docs.series).toHaveLength(30);
+    expect(docs.series.at(-1)).toEqual({
+      date: "2026-10-25",
+      views: null,
+      clones: null,
+      partial: false,
+    });
+    expect(model.rows.every((r) => r.series.every((p) => !p.partial))).toBe(true);
+  });
+
   it("keeps non-tracked repos as rows but out of totals, series and failedCount", () => {
     const idx: IndexFile = structuredClone(index);
     idx.repositories["100003"]!.tracking = "missing";
@@ -286,6 +303,7 @@ describe("buildDashboardModel without data", () => {
     expect(got.failedCount).toBe(0);
     expect(got.rows).toHaveLength(3);
     for (const row of got.rows) {
+      expect(row.series).toEqual([]);
       for (const cell of [row.d7, row.d30]) {
         expect(cell).toEqual({
           views: null,

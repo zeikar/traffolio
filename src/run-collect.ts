@@ -11,6 +11,7 @@ import type { NormalizedTraffic } from "./collector/normalize.js";
 import { checkTrafficToken, decidePreflight, lookupSelfRepository } from "./collector/preflight.js";
 import { buildDashboardModel } from "./reporter/aggregate.js";
 import { MarkerError, assertMarkers, renderSection, replaceSection } from "./reporter/readme.js";
+import { renderSparklineSvg } from "./reporter/sparkline.js";
 import { renderSummary, repoErrorLabel } from "./reporter/summary.js";
 import type { RepoErrorEntry, SummaryCounts, SummaryInput } from "./reporter/summary.js";
 import { renderTrafficSvg } from "./reporter/svg.js";
@@ -73,6 +74,7 @@ interface Progress {
 }
 
 const SVG_PATH = "assets/traffic.svg";
+const sparklinePath = (id: string): string => `assets/sparklines/${id}.svg`;
 
 const VISIBILITY_MESSAGES = {
   undeterminable:
@@ -272,7 +274,11 @@ async function writeResults(
 
   const model = buildDashboardModel(index, status, monthFilesByRepo);
   const svg = renderTrafficSvg(model.series, { sampleLabel: false });
-  const nextReadme = replaceSection(readme, renderSection(model, { svgPath: SVG_PATH, sampleLabel: false }));
+  const sparklines = model.rows.map((row) => [sparklinePath(row.id), renderSparklineSvg(row.series)] as const);
+  const nextReadme = replaceSection(
+    readme,
+    renderSection(model, { svgPath: SVG_PATH, sparklinePath, sampleLabel: false }),
+  );
 
   const changed: boolean[] = [];
   for (const file of touchedMonths) changed.push(await store.writeMonthFile(file));
@@ -282,5 +288,6 @@ async function writeResults(
     await store.writeTextFile(SVG_PATH, svg),
     await store.writeTextFile("README.md", nextReadme),
   );
+  for (const [path, text] of sparklines) changed.push(await store.writeTextFile(path, text));
   return { commit: changed.includes(true), dataThroughDate: status.dataThroughDate };
 }

@@ -50,6 +50,8 @@ export interface DashboardRow {
   lastError: RepoStatus["lastError"];
   d7: PeriodSum;
   d30: PeriodSum;
+  /** This repo's own 30 days ending at `dataThroughDate`; empty when it is `null`. */
+  series: SeriesPoint[];
 }
 
 export interface DashboardModel {
@@ -201,6 +203,7 @@ export function buildDashboardModel(
       lastError,
       d7: end === null ? noData() : sumPeriod(days, end, 7),
       d30: end === null ? noData() : sumPeriod(days, end, 30),
+      series: end === null ? [] : dailySeries([days], end, SERIES_DAYS),
     };
   });
 

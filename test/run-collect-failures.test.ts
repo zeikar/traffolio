@@ -231,13 +231,13 @@ async function trafficDirs(): Promise<string[]> {
   }
 }
 
-/** Cells of the README repo-table row for `fullName` (repo, visibility, 4 traffic cells, stars, forks, status). */
+/** Cells of the README repo-table row for `fullName` (repo, trend, visibility, 4 traffic cells, stars, forks, status). */
 function readmeRow(readme: string, fullName: string): string[] {
   const line = readme.split("\n").find((l) => l.startsWith(`| [${fullName}](`));
   if (line === undefined) throw new Error(`README has no row for ${fullName}`);
   return line.split("|").slice(1, -1).map((cell) => cell.trim());
 }
-const trafficCells = (row: string[]) => row.slice(2, 6);
+const trafficCells = (row: string[]) => row.slice(3, 7);
 
 const countMatches = (text: string, re: RegExp) => (text.match(re) ?? []).length;
 
@@ -354,6 +354,9 @@ describe("partial failures", () => {
 
     expect(changedPaths(before, await snapshot())).toEqual([
       "README.md",
+      "assets/sparklines/100001.svg",
+      "assets/sparklines/100002.svg",
+      "assets/sparklines/100003.svg",
       "assets/traffic.svg",
       "data/index.json",
       "data/status.json",
@@ -455,7 +458,12 @@ describe("idempotence and upsert", () => {
     expect(r.result.commit).toBe(true);
 
     const monthPath = "data/traffic/100001/2026-10.json";
-    expect(changedPaths(before, await snapshot())).toEqual(["README.md", "assets/traffic.svg", monthPath]);
+    expect(changedPaths(before, await snapshot())).toEqual([
+      "README.md",
+      "assets/sparklines/100001.svg",
+      "assets/traffic.svg",
+      monthPath,
+    ]);
     const prev = JSON.parse(before[monthPath]!) as MonthFile;
     const next = await readJson<MonthFile>(monthPath);
     expect(prev.days["2026-10-25"]?.views).toBe(6);
@@ -500,6 +508,7 @@ describe("idempotence and upsert", () => {
       expect(text).not.toContain("secret-notes");
       expect(text).not.toContain("100007");
     }
+    expect((await readdir(join(root, "assets/sparklines"))).sort()).toEqual(SELECTED_IDS.map((id) => `${id}.svg`));
   });
 });
 
@@ -589,6 +598,9 @@ describe("no traffic window", () => {
 
     expect(changedPaths(before, await snapshot())).toEqual([
       "README.md",
+      "assets/sparklines/100001.svg",
+      "assets/sparklines/100002.svg",
+      "assets/sparklines/100003.svg",
       "assets/traffic.svg",
       "data/index.json",
       "data/status.json",

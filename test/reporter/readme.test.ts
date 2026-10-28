@@ -28,7 +28,11 @@ beforeAll(async () => {
   model = buildDashboardModel(index, status, files);
 });
 
-const opts = { svgPath: "./traffic.svg", sampleLabel: false };
+const opts = {
+  svgPath: "./traffic.svg",
+  sparklinePath: (id: string) => `./sparklines/${id}.svg`,
+  sampleLabel: false,
+};
 const rowLine = (s: string, name: string) =>
   s.split("\n").find((l) => l.includes(`/${name}]`))!;
 
@@ -49,10 +53,22 @@ describe("renderSection", () => {
   it("shows — for the forbidden repo's 7d cells and its status", () => {
     const line = rowLine(renderSection(model, opts), "Sample-Docs");
     const cells = line.split("|").map((c) => c.trim());
-    // Repository, Visibility, Views 7d, Views 30d, Clones 7d, Clones 30d
-    expect(cells[3]).toBe("—");
-    expect(cells[5]).toBe("—");
+    // Repository, Trend, Visibility, Views 7d, Views 30d, Clones 7d, Clones 30d
+    expect(cells[4]).toBe("—");
+    expect(cells[6]).toBe("—");
     expect(line).toContain("forbidden since 2026-10-10");
+  });
+
+  it("puts a per-row trend sparkline right after the repository", () => {
+    const s = renderSection(model, opts);
+    expect(s).toContain(
+      "| Repository | Trend (30d) | Visibility | Views 7d |",
+    );
+    expect(s).toContain("| --- | --- | --- | ---: |");
+    for (const row of model.rows) {
+      const cells = rowLine(s, row.name).split("|").map((c) => c.trim());
+      expect(cells[2]).toBe(`![trend](./sparklines/${row.id}.svg)`);
+    }
   });
 
   it("marks sums over the gap window with * and adds a footnote", () => {

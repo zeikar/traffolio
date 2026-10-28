@@ -12,6 +12,8 @@ export class MarkerError extends Error {
 
 export interface RenderOptions {
   svgPath: string;
+  /** Image path of a row's trend sparkline, by repo id. */
+  sparklinePath: (id: string) => string;
   sampleLabel: boolean;
 }
 
@@ -60,14 +62,14 @@ function status(row: DashboardRow): string {
   return `excluded (${row.tracking.slice("excluded:".length)})`;
 }
 
-function repoTable(rows: DashboardRow[]): string[] {
+function repoTable(rows: DashboardRow[], sparklinePath: (id: string) => string): string[] {
   const lines = [
-    "| Repository | Visibility | Views 7d | Views 30d | Clones 7d | Clones 30d | Stars | Forks | Status |",
-    "| --- | --- | ---: | ---: | ---: | ---: | ---: | ---: | --- |",
+    "| Repository | Trend (30d) | Visibility | Views 7d | Views 30d | Clones 7d | Clones 30d | Stars | Forks | Status |",
+    "| --- | --- | --- | ---: | ---: | ---: | ---: | ---: | ---: | --- |",
   ];
   for (const r of rows) {
     lines.push(
-      `| [${escapeCell(r.fullName)}](https://github.com/${r.fullName}) | ${r.visibility} | ` +
+      `| [${escapeCell(r.fullName)}](https://github.com/${r.fullName}) | ![trend](${sparklinePath(r.id)}) | ${r.visibility} | ` +
         `${views(r.d7)} | ${views(r.d30)} | ${clones(r.d7)} | ${clones(r.d30)} | ` +
         `${r.stars} | ${r.forks} | ${escapeCell(status(r))} |`,
     );
@@ -106,7 +108,7 @@ export function renderSection(model: DashboardModel, opts: RenderOptions): strin
 
   const rows = model.rows;
   if (rows.length > 0) {
-    out.push(...repoTable(rows), "");
+    out.push(...repoTable(rows, opts.sparklinePath), "");
     needsFootnote ||= rows.some((r) =>
       [r.d7, r.d30].some((p) => (p.missingDays > 0 || p.partialDays > 0) && p.presentDays > 0),
     );
