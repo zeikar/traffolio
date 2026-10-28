@@ -1,0 +1,123 @@
+import { fileURLToPath } from "node:url";
+import { beforeAll, describe, expect, it } from "vitest";
+import { buildDashboardModel, type DashboardModel } from "../../src/reporter/aggregate.js";
+import {
+  MARKER_END,
+  MARKER_START,
+  MarkerError,
+  assertMarkers,
+  renderSection,
+  replaceSection,
+} from "../../src/reporter/readme.js";
+import { createStore } from "../../src/storage/store.js";
+import type { MonthFile } from "../../src/types.js";
+
+const demoRoot = fileURLToPath(new URL("../../fixtures/demo", import.meta.url));
+let model: DashboardModel;
+
+beforeAll(async () => {
+  const store = createStore(demoRoot);
+  const index = (await store.readIndex())!;
+  const status = (await store.readStatus())!;
+  const files: Record<string, MonthFile[]> = {};
+  for (const id of Object.keys(index.repositories)) files[id] = await store.readMonthFiles(id);
+  model = buildDashboardModel(index, status, files);
+});
+
+const opts = { svgPath: "./traffic.svg", sampleLabel: false };
+const rowLine = (s: string, name: string) => s.split("\n").find((l) => l.includes(`/${name}]`))!;
+
+describe("renderSection", () => {
+  it("has the data-through heading, totals, failed line, image and notes", () => {
+    const s = renderSection(model, opts);
+    expect(s).toContain(`Data through ${model.dataThroughDate} (UTC)`);
+    expect(s).toContain("| Views |");
+    expect(s).toContain("| Clones |");
+    expect(s).toContain("1 repository could not be collected (see data/status.json)");
+    expect(s).toContain("not unique users");
+    expect(s).toContain("(https://github.com/");
+    expect(s).not.toMatch(/\d{2}:\d{2}:\d{2}/);
+  });
+
+  it("shows — for the forbidden repo's 7d cells and its status", () => {
+    const line = rowLine(renderSection(model, opts), "Sample-Docs");
+    const cells = line.split("|").map((c) => c.trim());
+    // Repository, Visibility, Views 7d, Views 30d, Clones 7d, Clones 30d
+    expect(cells[3]).toBe("—");
+    expect(cells[5]).toBe("—");
+    expect(line).toContain("forbidden since 2026-10-10");
+  });
+
+  it("marks sums over the gap window with * and adds a footnote", () => {
+    const s = renderSection(model, opts);
+    expect(s).toMatch(/\| Views \| [^|]*\| \d+\* \|/);
+    expect(s).toContain("\\* Includes days with no stored data");
+  });
+
+  it("toggles the sample caption", () => {
+    expect(renderSection(model, { ...opts, sampleLabel: true })).toContain("Sample data");
+    expect(renderSection(model, opts)).not.toContain("Sample data");
+  });
+
+  it("embeds the image path verbatim", () => {
+    expect(renderSection(model, { ...opts, svgPath: "docs/a b/x.svg" })).toContain(
+      "![Traffic over the last 30 days](docs/a b/x.svg)",
+    );
+  });
+
+  it("renders the no-data heading without a totals table", () => {
+    const empty: DashboardModel = {
+      ...model,
+      dataThroughDate: null,
+      totals: null,
+      series: [],
+      rows: model.rows.map((r) => ({
+        ...r,
+        d7: { views: null, clones: null, presentDays: 0, missingDays: 0 },
+        d30: { views: null, clones: null, presentDays: 0, missingDays: 0 },
+      })),
+    };
+    const s = renderSection(empty, opts);
+    expect(s).toContain("No traffic data stored yet (UTC)");
+    expect(s).not.toContain("| Views |");
+    expect(s).not.toContain("Data through");
+    expect(s).toContain("| Repository |");
+    expect(s).toContain("could not be collected");
+    expect(s).toContain("![");
+    expect(rowLine(s, "Sample-Docs")).toContain("| — | — | — | — |");
+  });
+
+  it("escapes pipes in repo names", () => {
+    const m: DashboardModel = {
+      ...model,
+      rows: [{ ...model.rows[0]!, fullName: "o/a|b" }],
+    };
+    expect(renderSection(m, opts)).toContain("[o/a\\|b]");
+  });
+});
+
+describe("markers", () => {
+  let section: string;
+  beforeAll(() => {
+    section = renderSection(model, opts);
+  });
+
+  it("preserves text outside the markers byte-for-byte and is idempotent", () => {
+    const before = "# Title\r\n\n  keep  \t\n";
+    const after = "\n\nfooter ✓ \n";
+    const readme = `${before}${MARKER_START}\nold\n${MARKER_END}${after}`;
+    const once = replaceSection(readme, section);
+    expect(once.startsWith(`${before}${MARKER_START}\n`)).toBe(true);
+    expect(once.endsWith(`${MARKER_END}${after}`)).toBe(true);
+    expect(replaceSection(once, section)).toBe(once);
+  });
+
+  it("throws MarkerError for missing, duplicated or misordered markers", () => {
+    expect(() => assertMarkers("nothing")).toThrow(MarkerError);
+    expect(() => assertMarkers(`${MARKER_START}\n`)).toThrow(MarkerError);
+    expect(() => assertMarkers(`${MARKER_END}\n`)).toThrow(MarkerError);
+    expect(() => assertMarkers(`${MARKER_START}${MARKER_START}${MARKER_END}`)).toThrow(MarkerError);
+    expect(() => assertMarkers(`${MARKER_END}${MARKER_START}`)).toThrow(MarkerError);
+    expect(() => replaceSection("x", section)).toThrow(MarkerError);
+  });
+});
