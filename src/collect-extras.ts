@@ -5,7 +5,7 @@ import {
   listReleases,
   listStargazerTimestamps,
 } from "./collector/extras-api.js";
-import { countByDate, reuseIfCurrent, sortPaths, sortReferrers, summarizeReleases } from "./collector/extras-normalize.js";
+import { countByDate, sortPaths, sortReferrers, summarizeReleases } from "./collector/extras-normalize.js";
 import { PageLimitError, ResponseShapeError } from "./collector/github-api.js";
 import { GitHubApiError } from "./collector/github-client.js";
 import type { GitHubClient } from "./collector/github-client.js";
@@ -74,7 +74,7 @@ export async function collectExtras(
     for (const extra of EXTRAS) {
       try {
         if (extra === "stars/forks") {
-          files.growth.push(await growthFile(client, store, repo));
+          files.growth.push(await growthFile(client, repo));
           counts.starsForks++;
         } else if (extra === "referrers") {
           files.referrers.push(await referrerFile(client, store, repo, runDate));
@@ -111,14 +111,10 @@ export async function collectExtras(
   return done();
 }
 
-/** Each list is refetched only when its stored total no longer matches the repository listing. */
-async function growthFile(client: GitHubClient, store: Store, repo: RepoMeta): Promise<GrowthFile> {
-  const prev = await store.readGrowth(repo.id);
-  const stars =
-    reuseIfCurrent(prev?.stars, repo.stargazersCount) ??
-    countByDate(await listStargazerTimestamps(client, repo.fullName));
-  const forks =
-    reuseIfCurrent(prev?.forks, repo.forksCount) ?? countByDate(await listForkTimestamps(client, repo.fullName));
+/** Both lists are refetched every run: an unchanged count doesn't prove the dates are (unstar + new star). */
+async function growthFile(client: GitHubClient, repo: RepoMeta): Promise<GrowthFile> {
+  const stars = countByDate(await listStargazerTimestamps(client, repo.fullName));
+  const forks = countByDate(await listForkTimestamps(client, repo.fullName));
   return { schemaVersion: 1, repositoryId: repo.id, stars, forks };
 }
 
@@ -134,7 +130,7 @@ async function referrerFile(
   return withReferrerSnapshot(prev, repo.id, runDate, { referrers, paths });
 }
 
-/** Undefined for repositories without any counted release asset: they get no releases file. */
+/** Undefined for a repository that has no releases file and no counted release asset. */
 async function releasesFile(
   client: GitHubClient,
   store: Store,
@@ -142,8 +138,9 @@ async function releasesFile(
   runDate: string,
 ): Promise<ReleasesFile | undefined> {
   const summary = summarizeReleases(await listReleases(client, repo.fullName));
-  if (!summary.hasCountedAssets) return undefined;
-  return withReleaseSnapshot(await store.readReleases(repo.id), repo.id, runDate, summary);
+  const prev = await store.readReleases(repo.id);
+  if (!prev && !summary.hasCountedAssets) return undefined;
+  return withReleaseSnapshot(prev, repo.id, runDate, summary);
 }
 
 /** Writes each file only when its bytes changed; returns one changed flag per file. */

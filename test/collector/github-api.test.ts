@@ -96,9 +96,20 @@ describe("listOwnedRepositories", () => {
     await expect(listOwnedRepositories(client)).rejects.toBeInstanceOf(ResponseShapeError);
   });
 
-  it("throws instead of looping forever on endless pagination", async () => {
+  it("throws instead of looping forever when a next link repeats", async () => {
     const { client } = setup(() => json([], { link: `<${PAGE2_URL}>; rel="next"` }));
-    await expect(listOwnedRepositories(client)).rejects.toThrow(/exceeded/);
+    await expect(listOwnedRepositories(client)).rejects.toThrow(/repeated/);
+  });
+
+  it("follows more than 100 pages to the end", async () => {
+    const { client, fetch } = setup((url) => {
+      const page = Number(url.searchParams.get("page") ?? "1");
+      return page < 150
+        ? json([], { link: `<https://api.github.com/user/repos?affiliation=owner&per_page=100&page=${page + 1}>; rel="next"` })
+        : json([]);
+    });
+    await expect(listOwnedRepositories(client)).resolves.toEqual([]);
+    expect(fetch).toHaveBeenCalledTimes(150);
   });
 });
 

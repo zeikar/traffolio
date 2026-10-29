@@ -19,10 +19,11 @@ interface Logic {
   releaseEnd(repos: Partial<Repo>[]): string | null;
   releaseDownloads(rel: NonNullable<Repo["releases"]>, period: string, relEnd: string): Downloads;
   releaseDaily(rel: NonNullable<Repo["releases"]>, range: Range): DailyPoint[];
+  releaseCoverage(latest: string, start: string | null, relEnd: string): "current" | "stale" | "missing";
 }
 
 const logic = new Function(
-  `${CLIENT_LOGIC}\nreturn { periodStart, growthAdded, starRange, starSeries, latestReferrers, releaseEnd, releaseDownloads, releaseDaily };`,
+  `${CLIENT_LOGIC}\nreturn { periodStart, growthAdded, starRange, starSeries, latestReferrers, releaseEnd, releaseDownloads, releaseDaily, releaseCoverage };`,
 )() as Logic;
 
 const end = "2026-10-25";
@@ -213,6 +214,47 @@ describe("release downloads", () => {
     const d = logic.releaseDownloads(deleted, "7d", "2026-10-08");
     expect(d.rows.map((r) => r.id)).toEqual(["1"]);
     expect(d.inPeriod).toBe(0);
+  });
+
+  it("includes the first day of the period when snapshots are daily", () => {
+    const snapshots: Record<string, Record<string, number>> = {};
+    for (let i = 0; i < 40; i++) snapshots[new Date(Date.UTC(2026, 8, 20 + i)).toISOString().slice(0, 10)] = { "1": 10 * (i + 1) };
+    const rel = { info: { "1": ["v1", "", "2026-01-01"] as [string, string, string | null] }, snapshots };
+    const lastDay = "2026-10-29";
+    const d = logic.releaseDownloads(rel, "7d", lastDay);
+    const chart = logic
+      .releaseDaily(rel, { start: logic.periodStart("7d", lastDay)!, end: lastDay })
+      .reduce((sum, p) => sum + (p.downloads ?? 0), 0);
+    expect(d.inPeriod).toBe(70);
+    expect(chart).toBe(70);
+    expect(logic.releaseDownloads(rel, "30d", lastDay).inPeriod).toBe(300);
+  });
+
+  it("counts downloads after a drop (deleted asset) in the period total", () => {
+    const rel = {
+      info: { "1": ["v1", "", "2026-01-01"] as [string, string, string | null] },
+      snapshots: { "2026-10-01": { "1": 100 }, "2026-10-02": { "1": 90 }, "2026-10-03": { "1": 95 } },
+    };
+    expect(logic.releaseDownloads(rel, "7d", "2026-10-03").inPeriod).toBe(5);
+  });
+
+  it("counts period downloads of a release deleted before the latest snapshot", () => {
+    const rel = {
+      info: { "1": ["v1", "", "2026-01-01"], "2": ["v2", "", "2026-01-01"] } as Record<string, [string, string, string | null]>,
+      snapshots: { "2026-10-01": { "1": 100, "2": 5 }, "2026-10-02": { "1": 110, "2": 5 }, "2026-10-03": { "2": 5 } },
+    };
+    const d = logic.releaseDownloads(rel, "7d", "2026-10-03");
+    const chart = logic.releaseDaily(rel, { start: "2026-09-27", end: "2026-10-03" }).reduce((n, p) => n + (p.downloads ?? 0), 0);
+    expect(d.inPeriod).toBe(10);
+    expect(chart).toBe(10);
+    expect(d.rows.map((r) => r.id)).toEqual(["2"]);
+  });
+
+  it("flags a repository whose newest snapshot predates the overview end", () => {
+    expect(logic.releaseCoverage("2026-10-29", "2026-10-23", "2026-10-29")).toBe("current");
+    expect(logic.releaseCoverage("2026-10-26", "2026-10-23", "2026-10-29")).toBe("stale");
+    expect(logic.releaseCoverage("2026-10-02", "2026-10-23", "2026-10-29")).toBe("missing");
+    expect(logic.releaseCoverage("2026-10-02", null, "2026-10-29")).toBe("stale");
   });
 
   it("attributes a multi-day interval to its later date without splitting it", () => {

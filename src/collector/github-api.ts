@@ -3,7 +3,8 @@ import type { RepoMeta } from "../types.js";
 import type { GitHubClient } from "./github-client.js";
 import type { TrafficPoint } from "./normalize.js";
 
-const MAX_PAGES = 100;
+// Safety net only: GitHub's own `rel="next"` links end every real listing.
+const MAX_PAGES = 2000;
 
 /** Message carries only the request path: never the body or Zod issue values, which can echo input. */
 export class ResponseShapeError extends Error {
@@ -16,12 +17,12 @@ export class ResponseShapeError extends Error {
   }
 }
 
-/** A paginated listing had more pages than we follow. Message carries only the path and the limit. */
+/** A paginated listing looped or ran past the safety cap. Message carries only the path. */
 export class PageLimitError extends Error {
   readonly path: string;
 
-  constructor(path: string) {
-    super(`GET ${path} exceeded ${MAX_PAGES} pages`);
+  constructor(path: string, reason: "limit" | "loop" = "limit") {
+    super(reason === "loop" ? `GET ${path} repeated a next page link` : `GET ${path} exceeded ${MAX_PAGES} pages`);
     this.name = "PageLimitError";
     this.path = path;
   }
@@ -78,7 +79,7 @@ export async function getAuthenticatedUser(client: GitHubClient): Promise<{ logi
   return parseBody(User, res.body, "/user");
 }
 
-/** Every item of a listing, following `Link: rel="next"` for at most MAX_PAGES pages. */
+/** Every item of a listing, following `Link: rel="next"` until there is none; throws if a next link repeats or MAX_PAGES is exceeded. */
 export async function fetchAllPages<T>(
   client: GitHubClient,
   path: string,
@@ -88,10 +89,13 @@ export async function fetchAllPages<T>(
 ): Promise<T[]> {
   const items: T[] = [];
   let res = await client.get(path, query, options);
+  const seen = new Set<string>();
   for (let page = 1; ; page++) {
     items.push(...parseBody(z.array(item), res.body, path));
     const next = parseNextLink(res.headers.get("link"));
     if (next === null) return items;
+    if (seen.has(next)) throw new PageLimitError(path, "loop");
+    seen.add(next);
     if (page >= MAX_PAGES) throw new PageLimitError(path);
     res = await client.get(next, undefined, options);
   }

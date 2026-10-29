@@ -22,7 +22,7 @@ Checked 2026-10-28. All planned facts were confirmed; no deviations from the pla
 - 2026-10-29 (live): `GET /repos/{owner}/{repo}/traffic/popular/paths` returns `[{path, title, count, uniques}]`, top 10 over the last 14 days; **Administration: read**.
 - 2026-10-29 (live): `GET /repos/{owner}/{repo}/stargazers?per_page=100` with `Accept: application/vnd.github.star+json` returns `[{starred_at, user}]` (without that media type: plain user objects, no date); paginated via `Link`; **Metadata: read**. Only `starred_at` is kept.
 - 2026-10-29 (live): `GET /repos/{owner}/{repo}/forks?per_page=100` returns fork repositories with `created_at`; paginated via `Link`; **Metadata: read**.
-- 2026-10-29 (live): `GET /repos/{owner}/{repo}/releases?per_page=100` returns `[{id, tag_name, name, draft, prerelease, published_at, assets: [{name, download_count}]}]`; paginated via `Link`; **Metadata: read**.
+- 2026-10-29 (live): `GET /repos/{owner}/{repo}/releases?per_page=100` returns `[{id, tag_name, name, draft, prerelease, published_at, assets: [{name, download_count}]}]`; paginated via `Link`; **Contents: read** for private repositories (https://docs.github.com/en/rest/releases/releases, "List releases"); public repositories need no permission.
 
 ## Actions
 - 2026-10-28 https://github.com/actions/checkout/releases/latest (via `gh api`): latest `v7.0.1` -> use `actions/checkout@v7`.

@@ -218,36 +218,72 @@ function atOrBefore(dates, date) {
   return found;
 }
 
+/** Newest key of sorted dates that is < date, or null. */
+function before(dates, date) {
+  let found = null;
+  for (const d of dates) if (d < date) found = d;
+  return found;
+}
+
+/**
+ * How a repository's newest snapshot (latest) relates to a period starting at start (null: all
+ * time) and ending at relEnd: "current", "stale" (ends before relEnd, so the period is only
+ * partly covered) or "missing" (ends before the period starts, so it has no data in it).
+ */
+function releaseCoverage(latest, start, relEnd) {
+  if (latest === relEnd) return "current";
+  return start !== null && latest < start ? "missing" : "stale";
+}
+
 /**
  * Downloads per release as of the newest snapshot <= relEnd (releases in that
- * snapshot, newest published first) and in the period: latest minus the
- * newest snapshot at/before the period start. A release published on/after
+ * snapshot, newest published first) and in the period. A period figure sums the
+ * positive deltas between consecutive snapshots from the newest one before the
+ * (inclusive) period start, like releaseDaily, so a drop (deleted asset) counts
+ * as 0 without hiding later downloads, and releases deleted before the latest
+ * snapshot still count in inPeriod (but get no row). A release published on/after
  * the start counts from 0; otherwise, with no snapshot that early, it counts
  * from the first snapshot and since is set to that date. "all" is the total.
- * Drops (deleted assets) clamp to 0.
  */
 function releaseDownloads(rel, period, relEnd) {
   const dates = Object.keys(rel.snapshots).sort();
   const latest = atOrBefore(dates, relEnd);
   if (latest === null) return { latest: null, total: 0, inPeriod: 0, since: null, rows: [] };
   const start = periodStart(period, relEnd);
-  const baseDate = start === null ? null : atOrBefore(dates, start);
+  const baseDate = start === null ? null : before(dates, start);
   const counts = rel.snapshots[latest];
+  const first = baseDate !== null ? baseDate : dates[0];
+  const chain = dates.filter(function (d) { return d >= first && d <= latest; });
+  function gainedIn(id, published) {
+    const fromZero = published !== null && published >= start;
+    let prev = fromZero ? 0 : (rel.snapshots[chain[0]][id] || 0), gained = 0;
+    for (let i = fromZero ? 0 : 1; i < chain.length; i++) {
+      const cur = rel.snapshots[chain[i]][id] || 0;
+      if (cur > prev) gained += cur - prev;
+      prev = cur;
+    }
+    return gained;
+  }
   let total = 0, inPeriod = 0, since = null;
   const rows = Object.keys(counts).map(function (id) {
     const info = rel.info[id] || ["#" + id, "", null];
     const published = info[2];
-    let base = 0, rowSince = null;
-    if (start !== null && !(published !== null && published >= start)) {
-      if (baseDate !== null) base = rel.snapshots[baseDate][id] || 0;
-      else { base = rel.snapshots[dates[0]][id] || 0; rowSince = dates[0]; }
-    }
-    const row = { id: id, tag: info[0], name: info[1], published: published, total: counts[id], inPeriod: Math.max(0, counts[id] - base), since: rowSince };
+    const rowSince = start !== null && baseDate === null && !(published !== null && published >= start) ? dates[0] : null;
+    const gained = start === null ? counts[id] : gainedIn(id, published);
+    const row = { id: id, tag: info[0], name: info[1], published: published, total: counts[id], inPeriod: gained, since: rowSince };
     total += row.total;
     inPeriod += row.inPeriod;
     if (rowSince !== null) since = rowSince;
     return row;
   });
+  if (start !== null) {
+    const gone = new Set();
+    chain.forEach(function (d) { for (const id in rel.snapshots[d]) if (!(id in counts)) gone.add(id); });
+    gone.forEach(function (id) {
+      const info = rel.info[id];
+      inPeriod += gainedIn(id, info ? info[2] : null);
+    });
+  }
   rows.sort(function (a, b) {
     if (a.published !== b.published) {
       if (a.published === null) return 1;

@@ -3,7 +3,6 @@ import type { ReleaseItem } from "../../src/collector/extras-api.js";
 import {
   countByDate,
   isCountedAsset,
-  reuseIfCurrent,
   sortPaths,
   sortReferrers,
   summarizeReleases,
@@ -20,17 +19,6 @@ describe("countByDate", () => {
       ]),
     ).toEqual({ "2026-10-01": 2, "2026-10-02": 2 });
     expect(countByDate([])).toEqual({});
-  });
-});
-
-describe("reuseIfCurrent", () => {
-  it("reuses stored counts only while their total matches", () => {
-    const stored = { "2026-10-01": 2, "2026-10-05": 1 };
-    expect(reuseIfCurrent(stored, 3)).toBe(stored);
-    expect(reuseIfCurrent(stored, 4)).toBeUndefined();
-    expect(reuseIfCurrent(stored, 2)).toBeUndefined();
-    expect(reuseIfCurrent(undefined, 0)).toBeUndefined();
-    expect(reuseIfCurrent({}, 0)).toEqual({});
   });
 });
 
@@ -66,7 +54,9 @@ describe("isCountedAsset", () => {
     "app.zip.sha1",
     "app.zip.SHA512",
     "app.zip.md5",
-    "manifest.json",
+    "latest.json",
+    "latest-linux-arm64.yml",
+    "app.zip.minisig",
     "checksums.txt",
     "sample-cli_2.0.0_checksums.txt",
     "SHA256SUMS",
@@ -77,7 +67,7 @@ describe("isCountedAsset", () => {
     expect(isCountedAsset(name)).toBe(false);
   });
 
-  it.each(["app-1.0.0-x64.exe", "app.dmg", "app_linux_amd64.tar.gz", "app.AppImage", "notes.txt", "jsonfmt.zip"])(
+  it.each(["app-1.0.0-x64.exe", "app.dmg", "app_linux_amd64.tar.gz", "app.AppImage", "notes.txt", "jsonfmt.zip", "dataset.json", "rules.yaml", "manifest.json", "latest-notes.txt"])(
     "counts %s",
     (name) => {
       expect(isCountedAsset(name)).toBe(true);

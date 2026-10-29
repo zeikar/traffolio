@@ -246,15 +246,28 @@ describe("extras happy path", () => {
     );
   });
 
-  it("skips refetching a list whose stored total matches the repository listing", async () => {
+  it("refetches star and fork lists even when the stored totals match the repository listing", async () => {
     await seed();
     const r = await run();
-    // sample-cli: 42 stars and 5 forks stored = listing; sample-web lists 17 stars but has 0 stored.
-    expect(r.requested).not.toContain(repoPath("sample-cli", "stargazers"));
-    expect(r.requested).not.toContain(repoPath("sample-cli", "forks"));
-    expect(r.requested).toContain(repoPath("sample-web", "stargazers"));
-    expect(r.requested).toContain(repoPath("sample-web", "forks"));
-    expect(r.requested).toContain(repoPath("sample-cli", "releases"));
+    expect(r.requested).toContain(repoPath("sample-cli", "stargazers"));
+    expect(r.requested).toContain(repoPath("sample-cli", "forks"));
+  });
+
+  it("picks up an unstar plus a new star that leave the total unchanged", async () => {
+    await seed();
+    const before = await readJson<GrowthFile>("data/growth/100001.json");
+    const stars = JSON.parse(fixtureText("stargazers-page-1")) as { starred_at: string }[];
+    stars[0]!.starred_at = "2026-10-26T10:00:00Z";
+    await run({
+      routes: {
+        [repoPath("sample-cli", "stargazers")]: (url) =>
+          json(JSON.stringify(stars), 200, { link: `<${STARS_PAGE2}>; rel="next"` }),
+      },
+    });
+    const after = await readJson<GrowthFile>("data/growth/100001.json");
+    expect(Object.values(after.stars).reduce((a, b) => a + b, 0)).toBe(42);
+    expect(after.stars["2026-10-26"]).toBe(1);
+    expect(after.stars).not.toEqual(before.stars);
   });
 
   it("a next-day run adds a referrer and a release snapshot and keeps the old ones", async () => {
@@ -272,6 +285,14 @@ describe("extras happy path", () => {
     expect(Object.keys(referrers.snapshots)).toEqual(["2026-10-27", "2026-10-28"]);
     const releases = await readJson<ReleasesFile>("data/releases/100001.json");
     expect(Object.keys(releases.snapshots)).toEqual(["2026-10-27", "2026-10-28"]);
+  });
+
+  it("keeps snapshotting a tracked repository after its last counted asset disappears", async () => {
+    await seed();
+    await run({ now: DAY2, routes: { [repoPath("sample-cli", "releases")]: () => json([]) } });
+    const releases = await readJson<ReleasesFile>("data/releases/100001.json");
+    expect(releases.snapshots["2026-10-28"]).toEqual({});
+    expect(releases.snapshots["2026-10-27"]).toEqual({ "9000001": 0, "9000002": 150, "9000003": 15 });
   });
 
   it("a repository without counted release assets gets no releases file", async () => {
@@ -325,6 +346,18 @@ describe("extras failures", () => {
     expect(r.summary).toContain("- Reason: auth");
     expect(r.lines).toContain("octo-sample/sample-cli: stars/forks auth");
     expect(await snapshot()).toEqual(before);
+  });
+
+  it("422 on stargazers -> partial exit 2, previous growth file kept, body not logged", async () => {
+    const before = await seed();
+    const r = await run({
+      now: DAY2,
+      routes: { [repoPath("sample-cli", "stargazers")]: status(422, {}, "In order to keep the API fast, pagination is limited") },
+    });
+    expect(r.result).toMatchObject({ exitCode: 2, outcome: "partial" });
+    expect((await snapshot())["data/growth/100001.json"]).toBe(before["data/growth/100001.json"]);
+    expect(r.summary).toContain("1 failed");
+    expect(r.lines.join("\n")).not.toContain("pagination is limited");
   });
 
   it("rate limit given up during extras -> stop all requests, keep what was gathered, exit 2", async () => {

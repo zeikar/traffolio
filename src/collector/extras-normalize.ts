@@ -12,10 +12,6 @@ export function countByDate(timestamps: string[]): Record<string, number> {
   return counts;
 }
 
-export function sumCounts(counts: Record<string, number>): number {
-  return Object.values(counts).reduce((sum, n) => sum + n, 0);
-}
-
 const byCountThen = (a: { count: number }, b: { count: number }, x: string, y: string): number =>
   b.count - a.count || (x < y ? -1 : x > y ? 1 : 0);
 
@@ -29,11 +25,12 @@ export function sortPaths(entries: PathEntry[]): PathEntry[] {
 }
 
 // Updater metadata, signatures and checksums are fetched by tools rather than downloaded by people.
-const METADATA_ASSET = /\.(json|ya?ml|sig|asc|blockmap|sha1|sha256|sha512|md5)$/i;
-const CHECKSUM_LIST = /(^|[-_.])checksums?\.txt$|^(sha\d*|md5)sums/i;
+// Matched by name so real deliverables such as dataset.json or rules.yaml still count.
+const METADATA_ASSET =
+  /^latest(-[^/]+)?\.(ya?ml|json)$|\.(blockmap|sig|asc|minisig|sha1|sha256|sha512|md5)$|^(sha\d*|md5)sums|checksums.*\.txt$/i;
 
 export function isCountedAsset(name: string): boolean {
-  return !METADATA_ASSET.test(name) && !CHECKSUM_LIST.test(name);
+  return !METADATA_ASSET.test(name);
 }
 
 export interface ReleaseSummary {
@@ -60,15 +57,4 @@ export function summarizeReleases(items: ReleaseItem[]): ReleaseSummary {
     summary.downloads[id] = counted.reduce((sum, a) => sum + a.downloadCount, 0);
   }
   return summary;
-}
-
-/**
- * Stored per-date counts, reused while their total still matches the repository's current count;
- * undefined means the list must be fetched again.
- */
-export function reuseIfCurrent(
-  stored: Record<string, number> | undefined,
-  currentTotal: number,
-): Record<string, number> | undefined {
-  return stored !== undefined && sumCounts(stored) === currentTotal ? stored : undefined;
 }

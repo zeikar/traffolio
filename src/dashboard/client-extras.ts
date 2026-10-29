@@ -122,13 +122,30 @@ function renderReferrers(scope) {
 // ---- release downloads ------------------------------------------------------
 
 /** "1,234", plus a muted "since <date>" when there is no snapshot from before the period. */
-function periodCell(value, since) {
+function periodCell(value, since, through) {
   const box = h("span", "", fmt.format(value));
+  if (through) {
+    box.appendChild(h("span", "since", "through " + shortDate(through)));
+    box.title = "This repository's newest snapshot is from " + through + ", before the period ends";
+  }
   if (since !== null) {
     box.appendChild(h("span", "since", "since " + shortDate(since)));
     box.title = "No snapshot from before the period: counted from the first snapshot (" + since + ")";
   }
   return box;
+}
+
+/** A repository whose newest snapshot predates the overview's end date, so the gap is not shown as 0. */
+function staleReleaseCells(d, start) {
+  const coverage = releaseCoverage(d.latest, start, relEnd);
+  const total = h("span", "", fmt.format(d.total));
+  if (coverage !== "current") total.appendChild(h("span", "since", "as of " + shortDate(d.latest)));
+  if (coverage === "missing") {
+    const none = h("span", "", "—");
+    none.title = "No snapshot in this period; the newest is from " + d.latest;
+    return [total, none];
+  }
+  return [total, periodCell(d.inPeriod, d.since, coverage === "stale" ? d.latest : null)];
 }
 
 function fillReleaseTip(tip, p) {
@@ -167,17 +184,21 @@ function renderReleases(repo, scope) {
       btn.type = "button";
       btn.title = "Show " + row.repo.fullName;
       btn.addEventListener("click", function () { toggleRepo(row.repo.id); });
-      return [btn, fmt.format(row.d.total), periodCell(row.d.inPeriod, row.d.since)];
+      return [btn].concat(staleReleaseCells(row.d, start));
     }), "");
     return;
   }
 
-  const d = releaseDownloads(repo.releases, state.period, relEnd);
+  // The drill-down period ends at this repository's own newest snapshot, not another repository's.
   const dates = Object.keys(repo.releases.snapshots).sort();
+  const repoEnd = dates[dates.length - 1];
+  const repoStart = periodStart(state.period, repoEnd);
+  const repoWindow = repoStart === null ? "all time" : rangeText({ start: repoStart, end: repoEnd });
+  const d = releaseDownloads(repo.releases, state.period, repoEnd);
   byId("rel-sub").textContent = fmt.format(d.total) + " total as of " + d.latest + " · " + fmt.format(d.inPeriod) +
-    (d.since !== null ? " since " + d.since : " in " + windowText) + " · periods end at the latest snapshot";
+    (d.since !== null ? " since " + d.since : " in " + repoWindow) + " · periods end at the latest snapshot";
   // A window starting before the first snapshot shows those days as "no data".
-  const range = { start: start === null ? dates[0] : start, end: relEnd };
+  const range = { start: repoStart === null ? dates[0] : repoStart, end: repoEnd };
   renderChart(chart, releaseDaily(repo.releases, range), {
     label: "Daily release downloads for " + repo.fullName,
     bars: [{ key: "downloads", cls: "downloads" }],
