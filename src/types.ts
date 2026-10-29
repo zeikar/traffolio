@@ -75,3 +75,68 @@ export interface StatusFile {
   /** Keyed by repository id. */
   repositories: Record<string, RepoStatus>;
 }
+
+/**
+ * data/growth/<repoId>.json — stars and forks per UTC date, rebuilt from the
+ * current stargazer and fork lists (GitHub reports `starred_at` / `created_at`),
+ * so history goes back to the repository's start. Un-starred users and deleted
+ * forks are absent, so past totals can be slightly lower than they really were.
+ */
+export interface GrowthFile {
+  schemaVersion: 1;
+  repositoryId: number;
+  /** Stars given on each date (that still exist). */
+  stars: Record<string, number>;
+  /** Forks created on each date (that still exist). */
+  forks: Record<string, number>;
+}
+
+export interface ReferrerEntry {
+  referrer: string;
+  count: number;
+  uniques: number;
+}
+
+export interface PathEntry {
+  path: string;
+  title: string;
+  count: number;
+  uniques: number;
+}
+
+/** GitHub's top 10 referrers and paths over the 14 days before the run date. */
+export interface ReferrerSnapshot {
+  referrers: ReferrerEntry[];
+  paths: PathEntry[];
+}
+
+/** data/referrers/<repoId>/<YYYY-MM>.json — one snapshot per run date (UTC). */
+export interface ReferrerMonthFile {
+  schemaVersion: 1;
+  repositoryId: number;
+  /** YYYY-MM */
+  month: string;
+  /** Keyed by run date YYYY-MM-DD. */
+  snapshots: Record<string, ReferrerSnapshot>;
+}
+
+export interface ReleaseInfo {
+  tag: string;
+  name: string;
+  /** YYYY-MM-DD, or null when GitHub has none. */
+  publishedDate: string | null;
+}
+
+/**
+ * data/releases/<repoId>.json — cumulative downloads per published release as of
+ * each run date (assets only; updater metadata such as latest.yml excluded).
+ * Daily downloads are the difference between consecutive snapshots.
+ */
+export interface ReleasesFile {
+  schemaVersion: 1;
+  repositoryId: number;
+  /** Keyed by GitHub release id. */
+  releases: Record<string, ReleaseInfo>;
+  /** Run date YYYY-MM-DD -> release id -> cumulative downloads. */
+  snapshots: Record<string, Record<string, number>>;
+}
