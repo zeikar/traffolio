@@ -1,5 +1,14 @@
 import { createHash } from "node:crypto";
-import type { DayMetrics, IndexFile, RepoStatus, StatusFile, Tracking } from "../types.js";
+import type {
+  DayMetrics,
+  GrowthFile,
+  IndexFile,
+  ReferrerMonthFile,
+  ReleasesFile,
+  RepoStatus,
+  StatusFile,
+  Tracking,
+} from "../types.js";
 import { CLIENT_SCRIPT } from "./client.js";
 import { STYLES } from "./styles.js";
 
@@ -10,6 +19,11 @@ export interface DashboardInput {
   days: Record<string, ReadonlyMap<string, DayMetrics>>;
   /** Where the data was read from, shown in the page header. */
   source: string;
+  /** Per repository id; repos without the file are absent. */
+  growth: Record<string, GrowthFile>;
+  /** Each repository's newest referrer month file. */
+  referrers: Record<string, ReferrerMonthFile>;
+  releases: Record<string, ReleasesFile>;
 }
 
 /** [views, uniqueViews, clones, uniqueCloners] */
@@ -25,6 +39,15 @@ export interface DashboardRepo {
   lastError: RepoStatus["lastError"];
   /** Keyed by YYYY-MM-DD, ascending. */
   days: Record<string, DayTuple>;
+  /** Stars and forks added per date (ascending); null without a growth file. */
+  growth: { stars: Record<string, number>; forks: Record<string, number> } | null;
+  /** Latest referrer snapshot: [referrer, count, uniques] and [path, title, count, uniques]. */
+  referrers: { date: string; referrers: [string, number, number][]; paths: [string, string, number, number][] } | null;
+  /** Release id -> [tag, name, publishedDate]; run date (ascending) -> release id -> cumulative downloads. */
+  releases: {
+    info: Record<string, [string, string, string | null]>;
+    snapshots: Record<string, Record<string, number>>;
+  } | null;
 }
 
 export interface DashboardData {
@@ -32,6 +55,25 @@ export interface DashboardData {
   source: string;
   /** Keyed by repository id. */
   repos: Record<string, DashboardRepo>;
+}
+
+function sortedRecord<T, U>(record: Record<string, T>, map: (value: T) => U): Record<string, U> {
+  const out: Record<string, U> = {};
+  for (const key of Object.keys(record).sort()) out[key] = map(record[key]!);
+  return out;
+}
+
+const same = <T>(value: T): T => value;
+
+function latestSnapshot(file: ReferrerMonthFile | undefined): DashboardRepo["referrers"] {
+  const date = Object.keys(file?.snapshots ?? {}).sort().at(-1);
+  if (file === undefined || date === undefined) return null;
+  const snap = file.snapshots[date]!;
+  return {
+    date,
+    referrers: snap.referrers.map((r) => [r.referrer, r.count, r.uniques]),
+    paths: snap.paths.map((p) => [p.path, p.title, p.count, p.uniques]),
+  };
 }
 
 /** Compact, key-ordered snapshot of everything the page needs. */
@@ -57,6 +99,16 @@ export function toDashboardData(input: DashboardInput): DashboardData {
       forks: entry.forks,
       lastError: input.status.repositories[id]?.lastError ?? null,
       days,
+      growth: input.growth[id]
+        ? { stars: sortedRecord(input.growth[id].stars, same), forks: sortedRecord(input.growth[id].forks, same) }
+        : null,
+      referrers: latestSnapshot(input.referrers[id]),
+      releases: input.releases[id]
+        ? {
+            info: sortedRecord(input.releases[id].releases, (r) => [r.tag, r.name, r.publishedDate] as [string, string, string | null]),
+            snapshots: sortedRecord(input.releases[id].snapshots, (s) => sortedRecord(s, same)),
+          }
+        : null,
     };
   }
   return { dataThroughDate: input.status.dataThroughDate, source: input.source, repos };
@@ -128,6 +180,24 @@ export function renderDashboardHtml(input: DashboardInput): string {
 <section class="panel">
 <div class="legend" id="legend"></div>
 <div class="chart" id="chart"></div>
+</section>
+<section class="panel" id="stars-panel" hidden>
+<div class="panelhead"><h2>Stars over time</h2><p id="stars-sub"></p></div>
+<div class="chart" id="stars-chart"></div>
+<p class="foot">Based on current stargazers; un-stars aren&rsquo;t counted, so past totals may be slightly low.</p>
+</section>
+<section class="panel" id="ref-panel" hidden>
+<div class="panelhead"><h2>Top referrers &amp; pages</h2><p id="ref-sub"></p></div>
+<div class="split">
+<div><h3>Top referrers</h3><table class="mini" aria-label="Top referrers"><thead><tr id="ref-head"></tr></thead><tbody id="ref-body"></tbody></table></div>
+<div><h3>Top pages</h3><table class="mini" aria-label="Top pages"><thead><tr id="path-head"></tr></thead><tbody id="path-body"></tbody></table></div>
+</div>
+</section>
+<section class="panel" id="rel-panel" hidden>
+<div class="panelhead"><h2>Release downloads</h2><p id="rel-sub"></p></div>
+<div class="chart" id="rel-chart"></div>
+<table class="mini" aria-label="Release downloads"><thead><tr id="rel-head"></tr></thead><tbody id="rel-body"></tbody></table>
+<p class="foot">Counts GitHub Release asset downloads only (updater metadata excluded); source archives and package registries aren&rsquo;t included.</p>
 </section>
 <section class="panel">
 <div class="tablebar">

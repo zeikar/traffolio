@@ -2,7 +2,7 @@ import { createHash } from "node:crypto";
 import { cp, mkdtemp, readFile, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { fileURLToPath, pathToFileURL } from "node:url";
+import { pathToFileURL } from "node:url";
 import { afterEach, beforeAll, beforeEach, describe, expect, it } from "vitest";
 import { CLIENT_SCRIPT } from "../src/dashboard/client.js";
 import { CLIENT_LOGIC } from "../src/dashboard/client-logic.js";
@@ -13,26 +13,13 @@ import {
   toDashboardData,
 } from "../src/dashboard/html.js";
 import { runDashboard } from "../src/dashboard/run.js";
-import {
-  type DayMap,
-  daysFromMonthFiles,
-  periodTotals,
-  sumPeriod,
-} from "../src/reporter/aggregate.js";
-import { createStore } from "../src/storage/store.js";
+import { periodTotals, sumPeriod } from "../src/reporter/aggregate.js";
+import { demoRoot, loadDemoInput } from "./dashboard-demo.js";
 
-const demoRoot = fileURLToPath(new URL("../fixtures/demo", import.meta.url));
 let demo: DashboardInput;
 
 beforeAll(async () => {
-  const store = createStore(demoRoot);
-  const index = (await store.readIndex())!;
-  const status = (await store.readStatus())!;
-  const days: Record<string, DayMap> = {};
-  for (const id of Object.keys(index.repositories)) {
-    days[id] = daysFromMonthFiles(await store.readMonthFiles(id));
-  }
-  demo = { index, status, days, source: "/somewhere/data" };
+  demo = await loadDemoInput();
 });
 
 const DATA_OPEN = '<script type="application/json" id="data">';

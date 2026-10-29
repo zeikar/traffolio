@@ -3,9 +3,10 @@
  * palette matches the README SVG (views #0969da, clones #bc4c00) in light mode.
  */
 export const STYLES = `
-:root{--bg:#f6f8fa;--surface:#ffffff;--border:#d0d7de;--text:#1f2328;--muted:#59636e;--subtle:#eff2f5;--views:#0969da;--clones:#bc4c00;--grid:#eaeef2;--axis:#8c959f;--nodata:rgba(140,149,159,.14);--ok:#1a7f37;--err:#cf222e;--warn:#9a6700;--warn-bg:#fff8c5;--warn-border:#d4a72c;--accent:#0969da;--on-accent:#ffffff;--selected:#ddf4ff;--hover:#f6f8fa;--shadow:rgba(31,35,40,.12)}
-@media (prefers-color-scheme:dark){:root{--bg:#0d1117;--surface:#151b23;--border:#3d444d;--text:#f0f6fc;--muted:#9198a1;--subtle:#212830;--views:#4493f8;--clones:#f0883e;--grid:#262c36;--axis:#656c76;--nodata:rgba(110,118,129,.18);--ok:#3fb950;--err:#f85149;--warn:#d29922;--warn-bg:rgba(187,128,9,.15);--warn-border:rgba(187,128,9,.45);--accent:#4493f8;--on-accent:#0d1117;--selected:rgba(56,139,253,.16);--hover:#1c232c;--shadow:rgba(1,4,9,.6)}}
+:root{--bg:#f6f8fa;--surface:#ffffff;--border:#d0d7de;--text:#1f2328;--muted:#59636e;--subtle:#eff2f5;--views:#0969da;--clones:#bc4c00;--grid:#eaeef2;--axis:#8c959f;--nodata:rgba(140,149,159,.14);--ok:#1a7f37;--err:#cf222e;--warn:#9a6700;--warn-bg:#fff8c5;--warn-border:#d4a72c;--accent:#0969da;--on-accent:#ffffff;--selected:#ddf4ff;--hover:#f6f8fa;--shadow:rgba(31,35,40,.12);--stars:#bf8700;--downloads:#8250df}
+@media (prefers-color-scheme:dark){:root{--bg:#0d1117;--surface:#151b23;--border:#3d444d;--text:#f0f6fc;--muted:#9198a1;--subtle:#212830;--views:#4493f8;--clones:#f0883e;--grid:#262c36;--axis:#656c76;--nodata:rgba(110,118,129,.18);--ok:#3fb950;--err:#f85149;--warn:#d29922;--warn-bg:rgba(187,128,9,.15);--warn-border:rgba(187,128,9,.45);--accent:#4493f8;--on-accent:#0d1117;--selected:rgba(56,139,253,.16);--hover:#1c232c;--shadow:rgba(1,4,9,.6);--stars:#e3b341;--downloads:#ab7df8}}
 *{box-sizing:border-box}
+[hidden]{display:none!important}
 html{color-scheme:light dark}
 body{margin:0;background:var(--bg);color:var(--text);font:14px/1.5 -apple-system,BlinkMacSystemFont,"Segoe UI","Noto Sans",Helvetica,Arial,sans-serif;-webkit-font-smoothing:antialiased}
 main{max-width:1120px;margin:0 auto;padding:32px 24px 40px}
@@ -41,6 +42,7 @@ code{font:12px ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;background:v
 .card .label .badge{letter-spacing:0;text-transform:none}
 .card.views .value{color:var(--views)}
 .card.clones .value{color:var(--clones)}
+.card.stars .value{color:var(--stars)}
 .panel{margin-top:12px;padding:16px}
 .legend{display:flex;flex-wrap:wrap;gap:4px 18px;margin-bottom:8px;color:var(--muted);font-size:12px}
 .legend span{display:inline-flex;align-items:center;gap:6px}
@@ -57,6 +59,9 @@ code{font:12px ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;background:v
 .c-line.clones{stroke:var(--clones)}
 .c-solo.views,.c-dot.views{fill:var(--views)}
 .c-solo.clones,.c-dot.clones{fill:var(--clones)}
+.c-line.stars{stroke:var(--stars)}
+.c-solo.stars,.c-dot.stars{fill:var(--stars)}
+.c-bar.downloads{fill:var(--downloads)}
 .c-partial{fill:var(--surface);stroke-width:1.5}
 .c-partial.views{stroke:var(--views)}
 .c-partial.clones{stroke:var(--clones)}
@@ -75,6 +80,24 @@ code{font:12px ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;background:v
 .swatch{display:inline-block;width:8px;height:8px;border-radius:2px}
 .swatch.views{background:var(--views)}
 .swatch.clones{background:var(--clones)}
+.swatch.stars{background:var(--stars)}
+.swatch.downloads{background:var(--downloads)}
+.tooltip div.t-sub{margin-top:2px;max-width:240px}
+.panelhead{display:flex;flex-wrap:wrap;align-items:baseline;justify-content:space-between;gap:2px 16px;margin-bottom:10px}
+.panelhead p{margin:0;color:var(--muted);font-size:12px}
+.split{display:grid;grid-template-columns:repeat(auto-fit,minmax(300px,1fr));gap:16px 28px}
+h3{margin:0 0 2px;font-size:13px;font-weight:600}
+.mini{table-layout:fixed}
+.mini td{padding-top:6px;padding-bottom:6px}
+.mini td.text{overflow:hidden}
+.mini .line{display:block;overflow:hidden;text-overflow:ellipsis}
+.mini .line.sub{color:var(--muted);font-size:12px}
+.mini tbody tr{cursor:default}
+.mini tbody tr:hover{background:none}
+#rel-chart{margin-bottom:8px}
+.since{margin-left:6px;color:var(--muted);font-size:12px}
+.linkbtn{max-width:100%;padding:0;font:inherit;font-weight:600;color:var(--accent);text-align:left;background:none;border:0;cursor:pointer}
+.linkbtn:hover{text-decoration:underline}
 .tablebar{display:flex;flex-wrap:wrap;align-items:center;justify-content:space-between;gap:10px 16px;margin-bottom:10px}
 .tabletitle{display:flex;align-items:baseline;gap:10px}
 .tabletitle span{color:var(--muted);font-size:12px}

@@ -1,10 +1,12 @@
+import { CLIENT_EXTRAS } from "./client-extras.js";
 import { CLIENT_LOGIC } from "./client-logic.js";
 
 /*
  * Inline browser script for the dashboard: plain ES2020, no build step, no
  * external resources. Kept as String.raw templates, so the code must not use
  * backticks or "${", and must never contain "</script". The pure period/series
- * math lives in client-logic.ts.
+ * math lives in client-logic.ts; stars, referrers and releases UI in
+ * client-extras.ts.
  */
 
 export const CLIENT_UI = String.raw`
@@ -20,7 +22,17 @@ const METRICS = [
 const end = data.dataThroughDate;
 const repos = Object.keys(data.repos).map(function (id) { return Object.assign({ id: id }, data.repos[id]); });
 const tracked = repos.filter(function (r) { return r.tracking === "tracked"; });
-const state = { period: "30d", sortKey: "views", sortDir: "desc", filter: "", showAll: false, selected: null };
+// Without any growth file (data collected before star history existed) the page looks as before.
+const anyGrowth = repos.some(function (r) { return r.growth; });
+const STAR_NOTE = "Based on current stargazers; un-stars aren't counted, so past totals may be slightly low.";
+
+/** "#repo=<id>" deep link to one repository. */
+function repoFromHash() {
+  const m = /^#repo=(\d+)$/.exec(location.hash);
+  return m && data.repos[m[1]] ? m[1] : null;
+}
+
+const state = { period: "30d", sortKey: "views", sortDir: "desc", filter: "", showAll: false, selected: repoFromHash() };
 
 function byId(id) { return document.getElementById(id); }
 
@@ -170,23 +182,26 @@ function fillTooltip(tip, p, showUnique) {
 }
 
 /**
- * Line chart of daily views and clones. null days break the lines and get a
- * shaded band; partial days get hollow markers. Hover or arrow keys show a
- * tooltip.
+ * Daily chart: opts.lines ({ key, cls }) as lines, opts.bars as bars. Days
+ * where opts.isGap(p) get a shaded band and break the lines; partial days get
+ * hollow markers. Hover or arrow keys show opts.fill(tooltip, point).
  */
 function renderChart(container, series, opts) {
+  const lines = opts.lines || [];
+  const bars = opts.bars || [];
+  const keys = lines.concat(bars).map(function (m) { return m.key; });
   container.textContent = "";
-  if (!series.some(function (p) { return p.views !== null; })) {
-    container.appendChild(h("p", "empty", end === null ? "No traffic data stored yet." : "No traffic data stored for this period."));
+  if (!series.some(function (p) { return keys.some(function (k) { return p[k] !== null; }); })) {
+    container.appendChild(h("p", "empty", opts.empty));
     return;
   }
   const width = Math.max(container.clientWidth, 280);
-  const height = width < 600 ? 220 : 300;
+  const height = opts.compact ? (width < 600 ? 180 : 200) : (width < 600 ? 220 : 300);
   const pad = { left: 48, right: 12, top: 12, bottom: 30 };
   const plotW = width - pad.left - pad.right;
   const plotH = height - pad.top - pad.bottom;
   const n = series.length;
-  const max = Math.max.apply(null, series.map(function (p) { return Math.max(p.views || 0, p.clones || 0); }));
+  const max = Math.max.apply(null, series.map(function (p) { return Math.max.apply(null, keys.map(function (k) { return p[k] || 0; })); }));
   const scale = niceScale(max);
   const xAt = function (i) { return n === 1 ? pad.left + plotW / 2 : pad.left + (i * plotW) / (n - 1); };
   const yAt = function (v) { return pad.top + plotH - (v / scale.max) * plotH; };
@@ -201,9 +216,10 @@ function renderChart(container, series, opts) {
   // One band per run of no-data days (adjacent rects would leave seams).
   let gapStart = -1;
   series.forEach(function (p, i) {
-    if (p.views === null && gapStart < 0) gapStart = i;
-    if (gapStart < 0 || (p.views === null && i < n - 1)) return;
-    const last = p.views === null ? i : i - 1;
+    const gap = opts.isGap(p);
+    if (gap && gapStart < 0) gapStart = i;
+    if (gapStart < 0 || (gap && i < n - 1)) return;
+    const last = gap ? i : i - 1;
     const x0 = Math.max(pad.left, xAt(gapStart) - slot / 2);
     const x1 = Math.min(pad.left + plotW, xAt(last) + slot / 2);
     root.appendChild(svg("rect", { class: "c-nodata", x: x0, y: pad.top, width: x1 - x0, height: plotH }));
@@ -216,33 +232,45 @@ function renderChart(container, series, opts) {
     root.appendChild(svg("text", { x: pad.left - 8, y: y + 4, "text-anchor": "end" }, fmt.format(v)));
   }
 
-  // Label backwards from the last day so the data-through date always shows.
-  const every = Math.max(1, Math.ceil(n / Math.max(2, Math.floor(plotW / 64))));
+  // Label backwards from the last day so the data-through date always shows;
+  // ranges over a year (e.g. star history) need the year instead of the day.
+  const longRange = n > 370;
+  const tickLabel = function (d) { return longRange ? MONTHS[Number(d.slice(5, 7)) - 1] + " " + d.slice(0, 4) : shortDate(d); };
+  const every = Math.max(1, Math.ceil(n / Math.max(2, Math.floor(plotW / (longRange ? 72 : 64)))));
   for (let i = n - 1; i >= 0; i -= every) {
     const x = xAt(i);
     const anchor = n > 1 && i === n - 1 ? "end" : n > 1 && x - pad.left < 20 ? "start" : "middle";
     root.appendChild(svg("line", { class: "c-axis", x1: x, x2: x, y1: pad.top + plotH, y2: pad.top + plotH + 4 }));
-    root.appendChild(svg("text", { x: anchor === "end" ? x + 4 : x, y: height - 10, "text-anchor": anchor }, shortDate(series[i].date)));
+    root.appendChild(svg("text", { x: anchor === "end" ? x + 4 : x, y: height - 10, "text-anchor": anchor }, tickLabel(series[i].date)));
   }
 
-  METRICS.forEach(function (m) {
+  const barW = Math.max(1, Math.min(14, slot * 0.7));
+  bars.forEach(function (m) {
+    series.forEach(function (p, i) {
+      if (!p[m.key]) return;
+      const y = yAt(p[m.key]);
+      root.appendChild(svg("rect", { class: "c-bar " + m.cls, x: xAt(i) - barW / 2, y: y, width: barW, height: pad.top + plotH - y }));
+    });
+  });
+
+  lines.forEach(function (m) {
     const valueAt = function (i) { return series[i][m.key]; };
     const parts = runs(series, m.key);
     if (parts.length) {
-      root.appendChild(svg("path", { class: "c-line " + m.key, d: parts.map(function (r) { return pathData(r, xAt, yAt, valueAt); }).join(" ") }));
+      root.appendChild(svg("path", { class: "c-line " + m.cls, d: parts.map(function (r) { return pathData(r, xAt, yAt, valueAt); }).join(" ") }));
     }
     parts.forEach(function (r) {
-      if (r.length === 1) root.appendChild(svg("circle", { class: "c-solo " + m.key, cx: xAt(r[0]), cy: yAt(valueAt(r[0])), r: 2.5 }));
+      if (r.length === 1) root.appendChild(svg("circle", { class: "c-solo " + m.cls, cx: xAt(r[0]), cy: yAt(valueAt(r[0])), r: 2.5 }));
     });
     series.forEach(function (p, i) {
       if (p.partial && p[m.key] !== null) {
-        root.appendChild(svg("circle", { class: "c-partial " + m.key, cx: xAt(i), cy: yAt(p[m.key]), r: 3.5 }));
+        root.appendChild(svg("circle", { class: "c-partial " + m.cls, cx: xAt(i), cy: yAt(p[m.key]), r: 3.5 }));
       }
     });
   });
 
   const guide = svg("line", { class: "c-guide", y1: pad.top, y2: pad.top + plotH, visibility: "hidden" });
-  const dots = METRICS.map(function (m) { return svg("circle", { class: "c-dot " + m.key, r: 4, visibility: "hidden" }); });
+  const dots = lines.map(function (m) { return svg("circle", { class: "c-dot " + m.cls, r: 4, visibility: "hidden" }); });
   const overlay = svg("rect", { class: "c-overlay", x: pad.left - slot / 2, y: pad.top, width: plotW + slot, height: plotH });
   root.appendChild(guide);
   dots.forEach(function (d) { root.appendChild(d); });
@@ -261,13 +289,13 @@ function renderChart(container, series, opts) {
     guide.setAttribute("x1", x.toFixed(1));
     guide.setAttribute("x2", x.toFixed(1));
     guide.setAttribute("visibility", "visible");
-    METRICS.forEach(function (m, k) {
+    lines.forEach(function (m, k) {
       if (p[m.key] === null) { dots[k].setAttribute("visibility", "hidden"); return; }
       dots[k].setAttribute("cx", x.toFixed(1));
       dots[k].setAttribute("cy", yAt(p[m.key]).toFixed(1));
       dots[k].setAttribute("visibility", "visible");
     });
-    fillTooltip(tip, p, opts.showUnique);
+    opts.fill(tip, p);
     tip.hidden = false;
     const tw = tip.offsetWidth;
     tip.style.left = (x + 14 + tw > width ? Math.max(0, x - 14 - tw) : x + 14) + "px";
@@ -361,12 +389,29 @@ function renderScope() {
   cards.appendChild(card("clones", "Clones", sum.clones, sum, rangeText(range)));
   cards.appendChild(card("coverage", "Days with data", days ? fmt.format(sum.presentDays) + " of " + fmt.format(days) : "—", null,
     isIncomplete(sum) ? incompleteText(sum) : days ? "Complete" : "Nothing stored in this period"));
+  if (anyGrowth) {
+    [["stars", "Stars"], ["forks", "Forks"]].forEach(function (k) {
+      const total = scope.reduce(function (n, r) { return n + r[k[0]]; }, 0);
+      const start = end === null ? null : periodStart(state.period, end);
+      const added = end === null ? null : growthAdded(scope, k[0], start, end);
+      const sub = added === null ? "No " + k[0].slice(0, -1) + " history stored"
+        : "+" + fmt.format(added) + (start === null ? " all time" : " · " + rangeText({ start: start, end: end }));
+      const c = card(k[0], k[1], fmt.format(total), null, sub);
+      c.title = "Current total, which can include " + k[0] + " dated after " + end + "; the change counts " + k[0] + " dated in the period. " +
+        (k[0] === "stars" ? STAR_NOTE : "Deleted forks aren't counted.");
+      cards.appendChild(c);
+    });
+  }
 
   renderLegend(!repo);
   renderChart(byId("chart"), series, {
     label: repo ? "Daily views and clones for " + repo.fullName : "Daily views and clones across tracked repositories",
-    showUnique: Boolean(repo),
+    lines: METRICS.map(function (m) { return { key: m.key, cls: m.key }; }),
+    isGap: function (p) { return p.views === null; },
+    fill: function (tip, p) { fillTooltip(tip, p, Boolean(repo)); },
+    empty: end === null ? "No traffic data stored yet." : "No traffic data stored for this period.",
   });
+  renderExtras(repo, scope);
 }
 
 // ---- table --------------------------------------------------------------
@@ -378,9 +423,10 @@ const COLUMNS = [
   { key: "clones", label: "Clones", num: true },
   { key: "trend", label: "Daily views", sortable: false },
   { key: "stars", label: "Stars", num: true },
+  { key: "newStars", label: "New stars", num: true, title: "Stars dated in the selected period. " + STAR_NOTE },
   { key: "forks", label: "Forks", num: true },
   { key: "status", label: "Status" },
-];
+].filter(function (col) { return anyGrowth || col.key !== "newStars"; });
 
 function rowModels() {
   const sparkRange = periodRange(state.period, end, repos);
@@ -389,6 +435,7 @@ function rowModels() {
       repo: repo,
       sum: sumSeries(buildSeries([repo], periodRange(state.period, end, [repo]))),
       spark: buildSeries([repo], sparkRange),
+      newStars: end === null ? null : growthAdded([repo], "stars", periodStart(state.period, end), end),
       status: statusLabel(repo),
     };
   });
@@ -401,6 +448,7 @@ function sortValue(row, key) {
     case "views": return row.sum.views;
     case "clones": return row.sum.clones;
     case "stars": return row.repo.stars;
+    case "newStars": return row.newStars;
     case "forks": return row.repo.forks;
     default: return row.status;
   }
@@ -424,6 +472,7 @@ function renderHead() {
   COLUMNS.forEach(function (col) {
     const th = h("th", col.num ? "num" : "");
     th.scope = "col";
+    if (col.title) th.title = col.title;
     if (col.sortable === false) {
       th.textContent = col.label;
     } else {
@@ -450,8 +499,13 @@ function renderHead() {
   });
 }
 
+function syncHash() {
+  history.replaceState(null, "", state.selected ? "#repo=" + state.selected : location.pathname + location.search);
+}
+
 function toggleRepo(id) {
   state.selected = state.selected === id ? null : id;
+  syncHash();
   renderScope();
   renderBody();
   const bar = document.querySelector(".scopebar");
@@ -512,6 +566,11 @@ function renderBody() {
     tr.appendChild(trend);
 
     tr.appendChild(h("td", "num", fmt.format(repo.stars)));
+    if (anyGrowth) {
+      const td = h("td", "num" + (row.newStars ? "" : " dim"), row.newStars === null ? "—" : row.newStars ? "+" + fmt.format(row.newStars) : "0");
+      if (row.newStars === null) td.title = "No star history stored";
+      tr.appendChild(td);
+    }
     tr.appendChild(h("td", "num", fmt.format(repo.forks)));
 
     const st = h("td");
@@ -546,6 +605,7 @@ document.querySelectorAll(".seg button").forEach(function (b) {
 byId("close").addEventListener("click", function () {
   const id = state.selected;
   state.selected = null;
+  syncHash();
   renderScope();
   renderBody();
   const row = byId("body").querySelector("tr[data-id=\"" + id + "\"]");
@@ -553,6 +613,11 @@ byId("close").addEventListener("click", function () {
 });
 byId("filter").addEventListener("input", function (e) { state.filter = e.target.value; renderBody(); });
 byId("show-all").addEventListener("change", function (e) { state.showAll = e.target.checked; renderBody(); });
+window.addEventListener("hashchange", function () {
+  state.selected = repoFromHash();
+  renderScope();
+  renderBody();
+});
 
 let lastWidth = byId("chart").clientWidth;
 let resizeQueued = false;
@@ -565,11 +630,9 @@ window.addEventListener("resize", function () {
     if (width !== lastWidth) { lastWidth = width; renderScope(); }
   });
 });
-
-renderHeader();
-renderHead();
-renderScope();
-renderBody();
 `;
 
-export const CLIENT_SCRIPT = `(function () {\n"use strict";\n${CLIENT_LOGIC}\n${CLIENT_UI}\n})();\n`;
+// Runs last, so every const in the UI and extras parts is initialized.
+const CLIENT_INIT = "renderHeader();\nrenderHead();\nrenderScope();\nrenderBody();\n";
+
+export const CLIENT_SCRIPT = `(function () {\n"use strict";\n${CLIENT_LOGIC}\n${CLIENT_UI}\n${CLIENT_EXTRAS}\n${CLIENT_INIT}})();\n`;

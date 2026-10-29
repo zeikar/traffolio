@@ -82,6 +82,8 @@ npm install
 npm run dashboard   # writes dashboard.html and prints its file:// URL
 ```
 
+It also shows star history (cumulative stars and new stars per period), the latest top referrers and pages, and release downloads per release with a daily-downloads chart; `#repo=<repo_id>` at the end of the file URL opens one repository directly.
+
 It is a single HTML file with no external resources, so the data never leaves your machine. GitHub Pages is not an option for this: on a personal account a Pages site is always public, even from a private repository. `dashboard.html` is git-ignored because it contains your traffic data; don't commit or publish it.
 
 ### Run a collection locally

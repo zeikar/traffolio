@@ -3,6 +3,7 @@ import { dirname, join, resolve } from "node:path";
 import { pathToFileURL } from "node:url";
 import { type DayMap, daysFromMonthFiles } from "../reporter/aggregate.js";
 import { createStore } from "../storage/store.js";
+import type { GrowthFile, ReferrerMonthFile, ReleasesFile } from "../types.js";
 import { renderDashboardHtml } from "./html.js";
 
 export interface DashboardIo {
@@ -57,10 +58,19 @@ export async function runDashboard(argv: string[], io: DashboardIo): Promise<num
   }
 
   const days: Record<string, DayMap> = {};
+  const growth: Record<string, GrowthFile> = {};
+  const referrers: Record<string, ReferrerMonthFile> = {};
+  const releases: Record<string, ReleasesFile> = {};
   for (const id of Object.keys(index.repositories)) {
     days[id] = daysFromMonthFiles(await store.readMonthFiles(id));
+    const g = await store.readGrowth(id);
+    if (g) growth[id] = g;
+    const r = await store.readLatestReferrerMonth(id);
+    if (r) referrers[id] = r;
+    const rel = await store.readReleases(id);
+    if (rel) releases[id] = rel;
   }
-  const html = renderDashboardHtml({ index, status, days, source: join(rootDir, "data") });
+  const html = renderDashboardHtml({ index, status, days, growth, referrers, releases, source: join(rootDir, "data") });
   await mkdir(dirname(out), { recursive: true });
   await writeFile(out, html, "utf8");
   io.log(pathToFileURL(out).href);

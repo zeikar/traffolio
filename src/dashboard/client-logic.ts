@@ -95,4 +95,197 @@ function niceScale(maxValue) {
   const step = [1, 2, 5, 10].map(function (m) { return m * magnitude; }).find(function (s) { return s >= raw; });
   return { step: step, max: step * Math.ceil(Math.max(maxValue, 4) / step) };
 }
+
+// ---- stars & forks (data/growth) ------------------------------------------
+// History is rebuilt from the current stargazer/fork lists, so it goes back
+// before the traffic history; "all" therefore starts at the earliest star.
+
+/** First day of the period ending at end; null for "all" (unbounded). */
+function periodStart(period, end) {
+  const length = PERIOD_DAYS[period];
+  return length === "all" ? null : shiftDate(end, 1 - length);
+}
+
+/** Stars or forks ("stars" | "forks") added from start (null: ever) to end; null when no repo has history. */
+function growthAdded(repos, kind, start, end) {
+  let total = 0, any = false;
+  for (const repo of repos) {
+    if (!repo.growth) continue;
+    any = true;
+    const added = repo.growth[kind];
+    for (const d in added) if ((start === null || d >= start) && d <= end) total += added[d];
+  }
+  return any ? total : null;
+}
+
+/** Chart range for stars: the period, or from the earliest star for "all". */
+function starRange(period, end, repos) {
+  if (end === null) return null;
+  let start = periodStart(period, end);
+  if (start === null) {
+    for (const repo of repos) {
+      if (!repo.growth) continue;
+      for (const d in repo.growth.stars) if (start === null || d < start) start = d;
+    }
+  }
+  if (start === null || start > end) return null;
+  return { start: start, end: end };
+}
+
+/** Cumulative stars per day (stars before range.start included) and stars added that day. */
+function starSeries(repos, range) {
+  if (range === null) return [];
+  const added = {};
+  let total = 0;
+  for (const repo of repos) {
+    if (!repo.growth) continue;
+    for (const d in repo.growth.stars) {
+      const n = repo.growth.stars[d];
+      if (d < range.start) total += n;
+      else if (d <= range.end) added[d] = (added[d] || 0) + n;
+    }
+  }
+  return enumerateDates(range.start, range.end).map(function (d) {
+    const n = added[d] || 0;
+    total += n;
+    return { date: d, total: total, added: n };
+  });
+}
+
+// ---- referrers & popular paths (data/referrers) ---------------------------
+const TOP_ENTRIES = 10;
+
+function byCountThenKey(a, b) {
+  return b.count - a.count || (a.key < b.key ? -1 : a.key > b.key ? 1 : 0);
+}
+
+/**
+ * Mirrors src/reporter/referrers.ts: only snapshots from the newest run date
+ * among repos count (a repo that failed lately drops out instead of adding
+ * stale numbers); counts are summed. Uniques can't be added across repos, so
+ * they are null unless repos is a single repo. Snapshots are GitHub's top 10
+ * over the 14 days before the run date, never daily values.
+ */
+function latestReferrers(repos) {
+  let date = null;
+  for (const repo of repos) {
+    if (repo.referrers && (date === null || repo.referrers.date > date)) date = repo.referrers.date;
+  }
+  if (date === null) return null;
+  const single = repos.length === 1;
+  const referrers = new Map(), paths = new Map();
+  let included = 0;
+  for (const repo of repos) {
+    if (!repo.referrers || repo.referrers.date !== date) continue;
+    included++;
+    for (const r of repo.referrers.referrers) {
+      const e = referrers.get(r[0]) || { key: r[0], referrer: r[0], count: 0, uniques: single ? r[2] : null };
+      e.count += r[1];
+      referrers.set(r[0], e);
+    }
+    for (const p of repo.referrers.paths) {
+      const e = paths.get(p[0]) || { key: p[0], path: p[0], title: p[1], count: 0, uniques: single ? p[3] : null };
+      e.count += p[2];
+      paths.set(p[0], e);
+    }
+  }
+  return {
+    date: date,
+    repos: included,
+    referrers: Array.from(referrers.values()).sort(byCountThenKey).slice(0, TOP_ENTRIES),
+    paths: Array.from(paths.values()).sort(byCountThenKey).slice(0, TOP_ENTRIES),
+  };
+}
+
+// ---- release downloads (data/releases) ------------------------------------
+// Snapshots are cumulative per run date. Run dates are later than the traffic
+// data-through date, so release periods end at the newest snapshot date.
+
+/** Newest release snapshot date across repos, or null. */
+function releaseEnd(repos) {
+  let max = null;
+  for (const repo of repos) {
+    if (!repo.releases) continue;
+    for (const d in repo.releases.snapshots) if (max === null || d > max) max = d;
+  }
+  return max;
+}
+
+/** Newest key of sorted dates that is <= date, or null. */
+function atOrBefore(dates, date) {
+  let found = null;
+  for (const d of dates) if (d <= date) found = d;
+  return found;
+}
+
+/**
+ * Downloads per release as of the newest snapshot <= relEnd (releases in that
+ * snapshot, newest published first) and in the period: latest minus the
+ * newest snapshot at/before the period start. A release published on/after
+ * the start counts from 0; otherwise, with no snapshot that early, it counts
+ * from the first snapshot and since is set to that date. "all" is the total.
+ * Drops (deleted assets) clamp to 0.
+ */
+function releaseDownloads(rel, period, relEnd) {
+  const dates = Object.keys(rel.snapshots).sort();
+  const latest = atOrBefore(dates, relEnd);
+  if (latest === null) return { latest: null, total: 0, inPeriod: 0, since: null, rows: [] };
+  const start = periodStart(period, relEnd);
+  const baseDate = start === null ? null : atOrBefore(dates, start);
+  const counts = rel.snapshots[latest];
+  let total = 0, inPeriod = 0, since = null;
+  const rows = Object.keys(counts).map(function (id) {
+    const info = rel.info[id] || ["#" + id, "", null];
+    const published = info[2];
+    let base = 0, rowSince = null;
+    if (start !== null && !(published !== null && published >= start)) {
+      if (baseDate !== null) base = rel.snapshots[baseDate][id] || 0;
+      else { base = rel.snapshots[dates[0]][id] || 0; rowSince = dates[0]; }
+    }
+    const row = { id: id, tag: info[0], name: info[1], published: published, total: counts[id], inPeriod: Math.max(0, counts[id] - base), since: rowSince };
+    total += row.total;
+    inPeriod += row.inPeriod;
+    if (rowSince !== null) since = rowSince;
+    return row;
+  });
+  rows.sort(function (a, b) {
+    if (a.published !== b.published) {
+      if (a.published === null) return 1;
+      if (b.published === null) return -1;
+      return a.published < b.published ? 1 : -1;
+    }
+    return Number(b.id) - Number(a.id);
+  });
+  return { latest: latest, total: total, inPeriod: inPeriod, since: since, rows: rows };
+}
+
+/**
+ * Downloads between consecutive snapshots, all on the later date (from/days
+ * give the interval; never split per day). Per release a missing count is 0
+ * and a drop counts as 0 with clamped set. Other days are null; covered says
+ * whether a later snapshot's interval spans them (otherwise: no data).
+ */
+function releaseDaily(rel, range) {
+  if (range === null) return [];
+  const dates = Object.keys(rel.snapshots).sort();
+  const byDate = {};
+  for (let i = 1; i < dates.length; i++) {
+    const from = dates[i - 1], to = dates[i];
+    if (to < range.start || to > range.end) continue;
+    const prev = rel.snapshots[from], cur = rel.snapshots[to];
+    let downloads = 0, clamped = false;
+    const ids = new Set(Object.keys(prev).concat(Object.keys(cur)));
+    ids.forEach(function (id) {
+      const diff = (cur[id] || 0) - (prev[id] || 0);
+      if (diff < 0) clamped = true;
+      else downloads += diff;
+    });
+    byDate[to] = { from: from, days: Math.round((Date.parse(to) - Date.parse(from)) / DAY_MS), downloads: downloads, clamped: clamped };
+  }
+  return enumerateDates(range.start, range.end).map(function (d) {
+    const hit = byDate[d];
+    if (hit) return { date: d, downloads: hit.downloads, from: hit.from, days: hit.days, clamped: hit.clamped, covered: true };
+    return { date: d, downloads: null, from: null, days: 0, clamped: false, covered: dates.length > 1 && d > dates[0] && d <= dates[dates.length - 1] };
+  });
+}
 `;
