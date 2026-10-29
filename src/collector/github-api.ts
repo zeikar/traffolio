@@ -16,6 +16,17 @@ export class ResponseShapeError extends Error {
   }
 }
 
+/** A paginated listing had more pages than we follow. Message carries only the path and the limit. */
+export class PageLimitError extends Error {
+  readonly path: string;
+
+  constructor(path: string) {
+    super(`GET ${path} exceeded ${MAX_PAGES} pages`);
+    this.name = "PageLimitError";
+    this.path = path;
+  }
+}
+
 const RepoListItem = z.object({
   id: z.number(),
   name: z.string(),
@@ -46,7 +57,7 @@ export interface SelfRepoInfo {
   isTemplate: boolean;
 }
 
-function parseBody<T>(schema: z.ZodType<T>, body: unknown, path: string): T {
+export function parseBody<T>(schema: z.ZodType<T>, body: unknown, path: string): T {
   const result = schema.safeParse(body);
   if (!result.success) throw new ResponseShapeError(path);
   return result.data;
@@ -67,27 +78,37 @@ export async function getAuthenticatedUser(client: GitHubClient): Promise<{ logi
   return parseBody(User, res.body, "/user");
 }
 
-export async function listOwnedRepositories(client: GitHubClient): Promise<RepoMeta[]> {
-  const repos: RepoMeta[] = [];
-  let res = await client.get("/user/repos", { affiliation: "owner", per_page: 100, page: 1 });
+/** Every item of a listing, following `Link: rel="next"` for at most MAX_PAGES pages. */
+export async function fetchAllPages<T>(
+  client: GitHubClient,
+  path: string,
+  query: Record<string, string | number>,
+  item: z.ZodType<T>,
+  options?: { accept?: string },
+): Promise<T[]> {
+  const items: T[] = [];
+  let res = await client.get(path, query, options);
   for (let page = 1; ; page++) {
-    for (const item of parseBody(z.array(RepoListItem), res.body, "/user/repos")) {
-      repos.push({
-        id: item.id,
-        name: item.name,
-        fullName: item.full_name,
-        private: item.private,
-        fork: item.fork,
-        archived: item.archived,
-        stargazersCount: item.stargazers_count,
-        forksCount: item.forks_count,
-      });
-    }
+    items.push(...parseBody(z.array(item), res.body, path));
     const next = parseNextLink(res.headers.get("link"));
-    if (next === null) return repos;
-    if (page >= MAX_PAGES) throw new Error(`Repository listing exceeded ${MAX_PAGES} pages`);
-    res = await client.get(next);
+    if (next === null) return items;
+    if (page >= MAX_PAGES) throw new PageLimitError(path);
+    res = await client.get(next, undefined, options);
   }
+}
+
+export async function listOwnedRepositories(client: GitHubClient): Promise<RepoMeta[]> {
+  const items = await fetchAllPages(client, "/user/repos", { affiliation: "owner", per_page: 100, page: 1 }, RepoListItem);
+  return items.map((item) => ({
+    id: item.id,
+    name: item.name,
+    fullName: item.full_name,
+    private: item.private,
+    fork: item.fork,
+    archived: item.archived,
+    stargazersCount: item.stargazers_count,
+    forksCount: item.forks_count,
+  }));
 }
 
 export async function getTraffic(

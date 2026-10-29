@@ -1,6 +1,6 @@
 import { mkdir, readFile, readdir, writeFile } from "node:fs/promises";
 import { dirname, join } from "node:path";
-import type { IndexFile, MonthFile, StatusFile } from "../types.js";
+import type { GrowthFile, IndexFile, MonthFile, ReferrerMonthFile, ReleasesFile, StatusFile } from "../types.js";
 import { stableStringify } from "./json.js";
 
 function isNotFound(err: unknown): boolean {
@@ -14,6 +14,14 @@ export interface Store {
   writeIndex(index: IndexFile): Promise<boolean>;
   readStatus(): Promise<StatusFile | undefined>;
   writeStatus(status: StatusFile): Promise<boolean>;
+  readGrowth(repoId: number | string): Promise<GrowthFile | undefined>;
+  writeGrowth(file: GrowthFile): Promise<boolean>;
+  readReferrerMonth(repoId: number | string, month: string): Promise<ReferrerMonthFile | undefined>;
+  /** The newest month file of a repo, if any. */
+  readLatestReferrerMonth(repoId: number | string): Promise<ReferrerMonthFile | undefined>;
+  writeReferrerMonth(file: ReferrerMonthFile): Promise<boolean>;
+  readReleases(repoId: number | string): Promise<ReleasesFile | undefined>;
+  writeReleases(file: ReleasesFile): Promise<boolean>;
   readTextFile(relPath: string): Promise<string | undefined>;
   writeTextFile(relPath: string, text: string): Promise<boolean>;
 }
@@ -47,18 +55,23 @@ export function createStore(rootDir: string): Store {
     }
   }
 
+  /** `YYYY-MM.json` names in `dir`, sorted; empty when the directory does not exist. */
+  async function monthFileNames(dir: string): Promise<string[]> {
+    let names: string[];
+    try {
+      names = await readdir(join(rootDir, dir));
+    } catch (err) {
+      if (isNotFound(err)) return [];
+      throw err;
+    }
+    return names.filter((n) => /^\d{4}-\d{2}\.json$/.test(n)).sort();
+  }
+
   return {
     async readMonthFiles(repoId) {
       const dir = `data/traffic/${repoId}`;
-      let names: string[];
-      try {
-        names = await readdir(join(rootDir, dir));
-      } catch (err) {
-        if (isNotFound(err)) return [];
-        throw err;
-      }
       const files: MonthFile[] = [];
-      for (const name of names.filter((n) => /^\d{4}-\d{2}\.json$/.test(n)).sort()) {
+      for (const name of await monthFileNames(dir)) {
         const file = await readJson<MonthFile>(`${dir}/${name}`);
         if (file) files.push(file);
       }
@@ -74,6 +87,17 @@ export function createStore(rootDir: string): Store {
     writeIndex: (index) => writeIfChanged("data/index.json", stableStringify(index)),
     readStatus: () => readJson<StatusFile>("data/status.json"),
     writeStatus: (status) => writeIfChanged("data/status.json", stableStringify(status)),
+    readGrowth: (repoId) => readJson<GrowthFile>(`data/growth/${repoId}.json`),
+    writeGrowth: (file) => writeIfChanged(`data/growth/${file.repositoryId}.json`, stableStringify(file)),
+    readReferrerMonth: (repoId, month) => readJson<ReferrerMonthFile>(`data/referrers/${repoId}/${month}.json`),
+    async readLatestReferrerMonth(repoId) {
+      const latest = (await monthFileNames(`data/referrers/${repoId}`)).at(-1);
+      return latest === undefined ? undefined : readJson<ReferrerMonthFile>(`data/referrers/${repoId}/${latest}`);
+    },
+    writeReferrerMonth: (file) =>
+      writeIfChanged(`data/referrers/${file.repositoryId}/${file.month}.json`, stableStringify(file)),
+    readReleases: (repoId) => readJson<ReleasesFile>(`data/releases/${repoId}.json`),
+    writeReleases: (file) => writeIfChanged(`data/releases/${file.repositoryId}.json`, stableStringify(file)),
     readTextFile: readText,
     writeTextFile: writeIfChanged,
   };

@@ -14,6 +14,30 @@ export interface SummaryCounts {
   transient: number;
 }
 
+/** Results of the star/fork, referrer and release collection, counted per repository. */
+export interface ExtrasCounts {
+  starsForks: number;
+  referrers: number;
+  /** Repositories whose release list has at least one counted asset. */
+  releasesWithAssets: number;
+  /** 403/404 warnings. */
+  forbidden: number;
+  /** Transient, unknown and rate-limit failures. */
+  failed: number;
+  /** A rate limit stopped the remaining extras. */
+  rateLimited: boolean;
+}
+
+/** `skipped` when the traffic loop already hit the rate limit. */
+export function extrasLine(extras: ExtrasCounts | "skipped"): string {
+  if (extras === "skipped") return "Extras: skipped (rate limit reached during traffic collection)";
+  const e = extras;
+  return (
+    `Extras: stars/forks ${e.starsForks} ok, referrers ${e.referrers} ok, releases ${e.releasesWithAssets} with assets; ` +
+    `${e.forbidden} forbidden, ${e.failed} failed${e.rateLimited ? "; stopped early (rate limit)" : ""}`
+  );
+}
+
 export interface SummaryInput {
   /** Exact ISO run start time. The summary is the only output allowed to carry it (§8). */
   runStartedAt: string;
@@ -23,6 +47,8 @@ export interface SummaryInput {
   dataThroughDate: string | null;
   /** Absent when the run stopped before repositories were classified. */
   counts?: SummaryCounts;
+  /** Absent when the run stopped before the extras ran. */
+  extras?: ExtrasCounts | "skipped";
   perRepoErrors: RepoErrorEntry[];
 }
 
@@ -45,6 +71,7 @@ export function renderSummary(input: SummaryInput): string {
         `${c.forbidden} forbidden, ${c.transient} transient`,
     );
   }
+  if (input.extras) out.push(`- ${extrasLine(input.extras)}`);
   if (input.perRepoErrors.length > 0) {
     out.push("", "#### Repository warnings and errors", "");
     for (const entry of input.perRepoErrors) out.push(`- \`${entry.fullName}\`: ${repoErrorLabel(entry)}`);

@@ -3,7 +3,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { createStore } from "../../src/storage/store.js";
-import type { IndexFile, MonthFile, StatusFile } from "../../src/types.js";
+import type { GrowthFile, IndexFile, MonthFile, ReferrerMonthFile, ReleasesFile, StatusFile } from "../../src/types.js";
 
 let root: string;
 beforeEach(async () => {
@@ -46,6 +46,41 @@ describe("store", () => {
     expect(await s.readIndex()).toEqual(index);
     expect(await s.readStatus()).toEqual(status);
     expect(await s.readTextFile("assets/traffic.svg")).toBe("<svg/>");
+  });
+
+  it("round-trips growth, referrer and release files", async () => {
+    const s = createStore(root);
+    const growth: GrowthFile = { schemaVersion: 1, repositoryId: 42, stars: { "2026-10-01": 2 }, forks: {} };
+    const referrers = (mo: string): ReferrerMonthFile => ({
+      schemaVersion: 1,
+      repositoryId: 42,
+      month: mo,
+      snapshots: { [`${mo}-02`]: { referrers: [], paths: [] } },
+    });
+    const releases: ReleasesFile = {
+      schemaVersion: 1,
+      repositoryId: 42,
+      releases: { "7": { tag: "v1", name: "", publishedDate: null } },
+      snapshots: { "2026-10-02": { "7": 3 } },
+    };
+    expect(await s.readGrowth(42)).toBeUndefined();
+    expect(await s.readLatestReferrerMonth(42)).toBeUndefined();
+    expect(await s.readReleases(42)).toBeUndefined();
+
+    expect(await s.writeGrowth(growth)).toBe(true);
+    expect(await s.writeReferrerMonth(referrers("2026-10"))).toBe(true);
+    expect(await s.writeReferrerMonth(referrers("2026-09"))).toBe(true);
+    expect(await s.writeReleases(releases)).toBe(true);
+    expect(await s.writeGrowth(growth)).toBe(false);
+
+    expect(await s.readGrowth(42)).toEqual(growth);
+    expect(await s.readReferrerMonth(42, "2026-09")).toEqual(referrers("2026-09"));
+    expect(await s.readReferrerMonth(42, "2026-11")).toBeUndefined();
+    expect(await s.readLatestReferrerMonth(42)).toEqual(referrers("2026-10"));
+    expect(await s.readReleases(42)).toEqual(releases);
+    expect((await stat(join(root, "data/referrers/42/2026-10.json"))).isFile()).toBe(true);
+    expect((await stat(join(root, "data/growth/42.json"))).isFile()).toBe(true);
+    expect((await stat(join(root, "data/releases/42.json"))).isFile()).toBe(true);
   });
 
   it("returns false and leaves mtime alone on identical content", async () => {

@@ -32,8 +32,9 @@ It is not:
 1. A scheduled GitHub Actions workflow (`.github/workflows/collect.yml`) runs once a day. You can also run it manually.
 2. It lists your owned repositories, applies the filters in `traffolio.config.yml`, and fetches the latest 14 days of daily views and clones for each one.
 3. The results are merged into JSON files under `data/`. Each day is overwritten (upserted) by repository ID and UTC date, so re-running never double-counts.
-4. The README dashboard (between the `TRAFFOLIO` markers), `assets/traffic.svg` and the per-repository trend images in `assets/sparklines/` are regenerated from that JSON. Only that marked block is rewritten; the rest of this README is yours.
-5. If any file changed, the workflow commits it with `GITHUB_TOKEN`. If nothing changed, there is no commit.
+4. For the same repositories it also records star and fork history, a snapshot of the top referrers and popular pages, and release download counts (see [Data](#data)). These extras run after the traffic and never change how the traffic part of the run is judged.
+5. The README dashboard (between the `TRAFFOLIO` markers), `assets/traffic.svg` and the per-repository trend images in `assets/sparklines/` are regenerated from that JSON. Only that marked block is rewritten; the rest of this README is yours.
+6. If any file changed, the workflow commits it with `GITHUB_TOKEN`. If nothing changed, there is no commit.
 
 ## Setup
 
@@ -54,13 +55,20 @@ Secrets are not copied when a repository is created from a template. The schedul
 
 For fine-grained tokens, GitHub's REST docs list **Administration: Read** as the permission required by the traffic endpoints, so the token needs it. Traffolio uses it read-only and calls exactly these APIs:
 
-| API | Token | Purpose |
-|---|---|---|
-| `GET /user` | `TRAFFIC_TOKEN` | Identify the token owner |
-| `GET /user/repos?affiliation=owner` | `TRAFFIC_TOKEN` | List repositories you own (paginated) |
-| `GET /repos/{owner}/{repo}/traffic/views?per=day` | `TRAFFIC_TOKEN` | Daily views |
-| `GET /repos/{owner}/{repo}/traffic/clones?per=day` | `TRAFFIC_TOKEN` | Daily clones |
-| `GET /repos/{GITHUB_REPOSITORY}` | `GITHUB_TOKEN` | Check that Traffolio itself is private and is not the template |
+| API | Token | Permission | Purpose |
+|---|---|---|---|
+| `GET /user` | `TRAFFIC_TOKEN` | none | Identify the token owner |
+| `GET /user/repos?affiliation=owner` | `TRAFFIC_TOKEN` | Metadata: Read | List repositories you own (paginated) |
+| `GET /repos/{owner}/{repo}/traffic/views?per=day` | `TRAFFIC_TOKEN` | Administration: Read | Daily views |
+| `GET /repos/{owner}/{repo}/traffic/clones?per=day` | `TRAFFIC_TOKEN` | Administration: Read | Daily clones |
+| `GET /repos/{owner}/{repo}/traffic/popular/referrers` | `TRAFFIC_TOKEN` | Administration: Read | Top 10 referrers, last 14 days |
+| `GET /repos/{owner}/{repo}/traffic/popular/paths` | `TRAFFIC_TOKEN` | Administration: Read | Top 10 pages, last 14 days |
+| `GET /repos/{owner}/{repo}/stargazers` (`Accept: application/vnd.github.star+json`) | `TRAFFIC_TOKEN` | Metadata: Read | Star dates (paginated; only `starred_at` is kept) |
+| `GET /repos/{owner}/{repo}/forks` | `TRAFFIC_TOKEN` | Metadata: Read | Fork dates (paginated; only `created_at` is kept) |
+| `GET /repos/{owner}/{repo}/releases` | `TRAFFIC_TOKEN` | Metadata: Read | Release asset download counts (paginated) |
+| `GET /repos/{GITHUB_REPOSITORY}` | `GITHUB_TOKEN` | Metadata: Read | Check that Traffolio itself is private and is not the template |
+
+Star and fork lists are fetched again only when the repository's star or fork count no longer matches the stored history, so a quiet day costs about three extra requests per repository (referrers, paths, releases).
 
 The default `GITHUB_TOKEN` cannot read other repositories' traffic, so it cannot replace the PAT. The workflow only needs `contents: write` for the commit. Notes on the API versions and behavior are in [docs/github-api-notes.md](docs/github-api-notes.md).
 
@@ -105,6 +113,10 @@ What failures look like in Actions:
 | All selected repositories failed | Nothing written | Failed (exit 1) |
 | Some repositories hit transient errors (5xx, network, rate limit) after retries | Successes are committed | Failed (exit 2) |
 | A repository returns 403/404 (no permission or traffic not available) | Status recorded, no numbers written | Succeeds with a warning; shown as `—` |
+| Star/fork, referrer or release request returns 401 | Nothing written | Failed (exit 1) |
+| Star/fork, referrer or release request returns 403/404 | That file keeps its previous contents; traffic is committed | Succeeds with a warning in the log |
+| Star/fork, referrer or release request fails transiently (5xx, network, unexpected response) | That file keeps its previous contents; everything else is committed | Failed (exit 2) |
+| The rate limit is not lifted in time during star/fork, referrer or release requests (or already during traffic) | No further requests; what was gathered is committed | Failed (exit 2) |
 | Template origin repository | Nothing written | Succeeds (exit 0) with a notice |
 
 A failed run sends GitHub's normal notification, so a broken token does not go unnoticed.
@@ -118,6 +130,9 @@ data/
   index.json                 repo ID -> name, visibility, status, star/fork snapshot
   status.json                data-through date, per-repo last success and error class
   traffic/<repo_id>/YYYY-MM.json   daily metrics for one repo and month
+  growth/<repo_id>.json      stars and forks per date
+  referrers/<repo_id>/YYYY-MM.json   top referrers and pages, one snapshot per run date
+  releases/<repo_id>.json    cumulative release downloads per run date (only repos with release assets)
 assets/traffic.svg           generated README chart
 assets/sparklines/<repo_id>.svg   30-day trend shown in the README table
 ```
@@ -139,7 +154,9 @@ Per-month file shape:
 - **Data-through date, not run date.** The Traffic API lags by one to two days, and its 14-day window ends on different days for different repositories. "Data through" is the last date that every repository collected in the latest run has data for, so the newest day shown is complete; a later day from a faster repository is stored and appears on a following run.
 - **UTC only.** All dates and periods are UTC. There is no timezone setting.
 - **Events, not people.** Totals are event counts summed across the tracked repositories. Daily unique counts are stored but are not added across days or repositories, so there is no "monthly unique visitors". CI checkouts of your repositories can count as clones.
-- **Stars and forks are snapshots** taken at collection time, not a reconstructed history.
+- **Star and fork counts in `index.json` are snapshots** taken at collection time. `growth/<repo_id>.json` holds the history: the number of stars and forks per UTC date, rebuilt from GitHub's current stargazer and fork lists (`starred_at`, `created_at`). It is retroactive back to the repository's start, but based on who stars it *now*: removed stars and deleted forks are absent, so past totals can be slightly lower than they really were. Only dates are stored, never usernames.
+- **Referrer snapshots are 14-day aggregates.** GitHub reports only each repository's top 10 referrers and top 10 pages over the last 14 days. Each run stores that list under its run date in `referrers/<repo_id>/YYYY-MM.json` (an empty list is a valid snapshot). These are rolling 14-day totals as of each run date, not daily values, so don't add snapshots together. The README's top-referrer table sums the latest run date's snapshots across repositories (counts only: uniques cannot be added across repositories).
+- **Release downloads are cumulative.** `releases/<repo_id>.json` stores, per run date, each published release's total asset downloads so far; downloads on a day are the difference between consecutive snapshots. Drafts are ignored, prereleases count. Updater metadata, signatures and checksum files (`latest.yml`, `*.blockmap`, `*.sig`, `*.asc`, `*.sha256`, `checksums.txt`, `SHA256SUMS`, ...) are not counted, and GitHub has no counts for source-code archives, so those, and downloads from npm or other registries, are not included. A repository gets this file only once it has at least one counted asset. Metadata of deleted releases is kept.
 - **Nothing is deleted.** If a repository is deleted, renamed, or filtered out later, its old data stays. Repositories are keyed by their numeric ID, so a rename continues the same history.
 - Files have a fixed ordering and contain no run timestamps, so a re-run on the same day produces no diff and no commit.
 

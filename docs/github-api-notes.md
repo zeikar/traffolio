@@ -17,6 +17,13 @@ Checked 2026-10-28. All planned facts were confirmed; no deviations from the pla
 - Fields used from the list: `id, name, full_name, private, fork, archived, stargazers_count, forks_count`.
 - Self repo (`GET /repos/{GITHUB_REPOSITORY}`, `GITHUB_TOKEN`): `id, private, is_template`.
 
+## Stars, forks, referrers and releases
+- 2026-10-29 (live): `GET /repos/{owner}/{repo}/traffic/popular/referrers` returns `[{referrer, count, uniques}]`, top 10 over the last 14 days; **Administration: read** (same as traffic).
+- 2026-10-29 (live): `GET /repos/{owner}/{repo}/traffic/popular/paths` returns `[{path, title, count, uniques}]`, top 10 over the last 14 days; **Administration: read**.
+- 2026-10-29 (live): `GET /repos/{owner}/{repo}/stargazers?per_page=100` with `Accept: application/vnd.github.star+json` returns `[{starred_at, user}]` (without that media type: plain user objects, no date); paginated via `Link`; **Metadata: read**. Only `starred_at` is kept.
+- 2026-10-29 (live): `GET /repos/{owner}/{repo}/forks?per_page=100` returns fork repositories with `created_at`; paginated via `Link`; **Metadata: read**.
+- 2026-10-29 (live): `GET /repos/{owner}/{repo}/releases?per_page=100` returns `[{id, tag_name, name, draft, prerelease, published_at, assets: [{name, download_count}]}]`; paginated via `Link`; **Metadata: read**.
+
 ## Actions
 - 2026-10-28 https://github.com/actions/checkout/releases/latest (via `gh api`): latest `v7.0.1` -> use `actions/checkout@v7`.
 - 2026-10-28 https://github.com/actions/setup-node/releases/latest (via `gh api`): latest `v7.1.0` -> use `actions/setup-node@v7`.

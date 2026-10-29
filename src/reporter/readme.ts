@@ -1,4 +1,5 @@
 import type { DashboardModel, DashboardRow, PeriodSum } from "./aggregate.js";
+import type { TopReferrers } from "./referrers.js";
 
 export const MARKER_START = "<!-- TRAFFOLIO:START -->";
 export const MARKER_END = "<!-- TRAFFOLIO:END -->";
@@ -15,6 +16,8 @@ export interface RenderOptions {
   /** Image path of a row's trend sparkline, by repo id. */
   sparklinePath: (id: string) => string;
   sampleLabel: boolean;
+  /** Omitted or null: no referrer table. */
+  topReferrers?: TopReferrers | null;
 }
 
 const DASH = "—";
@@ -77,6 +80,19 @@ function repoTable(rows: DashboardRow[], sparklinePath: (id: string) => string):
   return lines;
 }
 
+function referrerTable(top: TopReferrers): string[] {
+  return [
+    `#### Top referrers (last 14 days as of ${top.date}, UTC)`,
+    "",
+    "| Referrer | Views from referrer |",
+    "| --- | ---: |",
+    ...top.referrers.map((r) => `| ${escapeCell(r.referrer)} | ${r.count} |`),
+    "",
+    "Summed over the tracked repositories; GitHub reports only each repository's top 10 referrers.",
+    "",
+  ];
+}
+
 /**
  * The failed-repo line is rendered only when N > 0, to keep a healthy README
  * quiet. The output carries a date, never a timestamp, so reruns on the same
@@ -125,6 +141,7 @@ export function renderSection(model: DashboardModel, opts: RenderOptions): strin
   }
 
   out.push(`![Traffic over the last 30 days](${opts.svgPath})`, "");
+  if (opts.topReferrers) out.push(...referrerTable(opts.topReferrers));
   out.push(
     "All dates and windows are UTC.  ",
     "Totals are event counts (views and clones), not unique users.",

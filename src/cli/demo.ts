@@ -2,6 +2,7 @@ import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { buildDashboardModel } from "../reporter/aggregate.js";
 import { renderSection } from "../reporter/readme.js";
+import { readTopReferrers } from "../reporter/referrers.js";
 import { renderSparklineSvg } from "../reporter/sparkline.js";
 import { renderTrafficSvg } from "../reporter/svg.js";
 import { createStore } from "../storage/store.js";
@@ -23,6 +24,7 @@ async function main(): Promise<void> {
     monthFilesByRepo[id] = await demo.readMonthFiles(id);
   }
   const model = buildDashboardModel(index, status, monthFilesByRepo);
+  const topReferrers = await readTopReferrers(demo, index, []);
 
   const out = createStore(repoRoot);
   const files: [string, string][] = [
@@ -33,6 +35,7 @@ async function main(): Promise<void> {
         svgPath: "./traffic.svg",
         sparklinePath: (id) => `./sparklines/${id}.svg`,
         sampleLabel: true,
+        topReferrers,
       }),
     ],
     ...model.rows.map((row): [string, string] => [

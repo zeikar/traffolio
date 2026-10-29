@@ -27,8 +27,11 @@ export interface GitHubResponse {
 }
 
 export interface GitHubClient {
-  /** `path` is an API path (`/user/repos`) or an absolute `https://api.github.com/...` URL. */
-  get(path: string, query?: Record<string, string | number>): Promise<GitHubResponse>;
+  /**
+   * `path` is an API path (`/user/repos`) or an absolute `https://api.github.com/...` URL.
+   * `accept` replaces the default media type (e.g. `application/vnd.github.star+json`).
+   */
+  get(path: string, query?: Record<string, string | number>, options?: { accept?: string }): Promise<GitHubResponse>;
 }
 
 export interface GitHubClientOptions {
@@ -48,20 +51,21 @@ export function createGitHubClient({ token, fetch, sleep, now }: GitHubClientOpt
   };
 
   return {
-    async get(pathOrUrl, query) {
+    async get(pathOrUrl, query, options) {
       const url = new URL(pathOrUrl, API_ORIGIN);
       if (url.origin !== API_ORIGIN) {
         throw new Error(`Refusing to send the token to a non-GitHub API origin: ${url.origin}`);
       }
       for (const [key, value] of Object.entries(query ?? {})) url.searchParams.set(key, String(value));
       const path = url.pathname;
+      const sendHeaders = options?.accept ? { ...requestHeaders, Accept: options.accept } : requestHeaders;
 
       for (let attempt = 1; ; attempt++) {
         let status = 0;
         let headers = new Headers();
         let kind: ErrorKind;
         try {
-          const res = await fetch(url, { headers: requestHeaders });
+          const res = await fetch(url, { headers: sendHeaders });
           status = res.status;
           headers = res.headers;
           if (res.ok) return { status, headers, body: await parseJsonBody(res, path) };

@@ -130,6 +130,19 @@ describe("renderSection", () => {
     expect(rowLine(s, "Sample-Docs")).toContain("| — | — | — | — |");
   });
 
+  it("renders the referrer table after the chart only when given", () => {
+    const s = renderSection(model, {
+      ...opts,
+      topReferrers: { date: "2026-10-27", referrers: [{ referrer: "a|b.example", count: 7 }] },
+    });
+    expect(s).toContain("#### Top referrers (last 14 days as of 2026-10-27, UTC)");
+    expect(s).toContain("| Referrer | Views from referrer |");
+    expect(s).toContain("| a\\|b.example | 7 |");
+    expect(s.indexOf("Top referrers")).toBeGreaterThan(s.indexOf("![Traffic over the last 30 days]"));
+    expect(renderSection(model, opts)).not.toContain("Top referrers");
+    expect(renderSection(model, { ...opts, topReferrers: null })).not.toContain("Top referrers");
+  });
+
   it("escapes pipes in repo names", () => {
     const m: DashboardModel = {
       ...model,

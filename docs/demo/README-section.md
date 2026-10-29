@@ -19,5 +19,17 @@
 
 ![Traffic over the last 30 days](./traffic.svg)
 
+#### Top referrers (last 14 days as of 2026-10-27, UTC)
+
+| Referrer | Views from referrer |
+| --- | ---: |
+| github.com | 54 |
+| Google | 22 |
+| news.ycombinator.com | 9 |
+| dev.to | 5 |
+| reddit.com | 5 |
+
+Summed over the tracked repositories; GitHub reports only each repository's top 10 referrers.
+
 All dates and windows are UTC.  
 Totals are event counts (views and clones), not unique users.
