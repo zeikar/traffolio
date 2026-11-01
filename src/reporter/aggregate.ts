@@ -120,16 +120,12 @@ function dayTotals(repos: DayMap[], starts: string[], date: string): SeriesPoint
 
 /**
  * Each repo's tracking start: its earliest key. A repo with no keys at all
- * (its first collection failed) gets "", so it is expected on every date and
- * its absence still marks days partial.
+ * (its first collection failed) gets "": its real start is unknown, so it is
+ * expected on every date of the scope's tracked range and still marks those
+ * days partial. Alone, it has no tracked range and sums to "no data".
  */
 function trackingStarts(repos: DayMap[]): string[] {
   return repos.map((days) => earliestDate(days) ?? "");
-}
-
-/** Earliest key of any repo, `undefined` when none has one. */
-function firstKey(starts: string[]): string | undefined {
-  return starts.filter((d) => d !== "").sort()[0];
 }
 
 /**
@@ -141,7 +137,7 @@ function firstKey(starts: string[]): string | undefined {
  */
 function sumRange(repos: DayMap[], start: string, end: string): PeriodSum {
   const starts = trackingStarts(repos);
-  const first = firstKey(starts);
+  const first = starts.filter((d) => d !== "").sort()[0];
   if (first === undefined) return noData();
   if (start < first) start = first;
   if (start > end) return noData();

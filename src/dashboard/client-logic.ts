@@ -32,8 +32,9 @@ function earliestDate(repos) {
 
 /**
  * Each repo's tracking start: its earliest key, or "" when it has none (its
- * first collection failed), so it is expected on every date. Days before a
- * repo's start are "not tracked yet": never missing, never partial.
+ * first collection failed), so it is expected on every date of the scope's
+ * range. Days before a repo's start are "not tracked yet": never missing,
+ * never partial.
  */
 const trackingStarts = new Map();
 function trackingStart(repo) {
