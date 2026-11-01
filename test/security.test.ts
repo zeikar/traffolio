@@ -31,12 +31,12 @@ const HISTORY_PAGE2_URL = "https://api.github.com/repositories/100001/stargazers
 
 type Override = (url: URL) => Response | undefined;
 
-function route(url: URL, override: Override): Response {
+function route(url: URL, override: Override, self: string): Response {
   const forced = override(url);
   if (forced) return forced;
   const ok = (text: string, headers: Record<string, string> = {}) => new Response(text, { status: 200, headers });
   const path = url.pathname;
-  if (path === "/repos/octo-sample/traffolio") return ok(fixtureText("self-repo-private"));
+  if (path === "/repos/octo-sample/traffolio") return ok(fixtureText(self));
   if (path === "/user") return ok(fixtureText("user"));
   if (path === "/user/repos") {
     return url.searchParams.get("page") === "2"
@@ -84,8 +84,8 @@ afterEach(async () => {
   await rm(actionsDir, { recursive: true, force: true });
 });
 
-async function runAndCollectOutputs(override: Override) {
-  const fetch = vi.fn<typeof globalThis.fetch>(async (input) => route(new URL(String(input)), override));
+async function runAndCollectOutputs(override: Override, self = "self-repo-private") {
+  const fetch = vi.fn<typeof globalThis.fetch>(async (input) => route(new URL(String(input)), override, self));
   const sleeps: number[] = [];
   const lines: string[] = [];
   const outputFile = join(actionsDir, "output");
@@ -187,6 +187,25 @@ describe("token and response-body hygiene", () => {
     );
     expect(result.outcome).toBe("partial");
     expect(sleeps.length).toBeGreaterThan(0);
+    expectNoSentinel(texts);
+  });
+});
+
+describe("public_mode", () => {
+  // In a public repository the log, summary, outputs and files are all public.
+  it.each([
+    ["happy path", () => undefined, "ok"],
+    ["500 on releases", failing(500, (u) => u.pathname === "/repos/octo-sample/sample-cli/releases"), "partial"],
+    ["401 on a traffic endpoint", failing(401, isTraffic), "fatal"],
+  ] as const)("%s names no private repository and leaks neither token nor body", async (_label, override, outcome) => {
+    await writeFile(join(root, "traffolio.config.yml"), `public_mode: true\n${CONFIG}`);
+    const { fetch, result, texts } = await runAndCollectOutputs(override, "self-repo-public");
+    expect(result.outcome).toBe(outcome);
+    expect(fetch.mock.calls.some(([input]) => String(input).includes("secret-notes"))).toBe(false);
+    for (const [name, text] of Object.entries(texts)) {
+      expect(text, `secret-notes leaked into ${name}`).not.toContain("secret-notes");
+      expect(text, `100007 leaked into ${name}`).not.toContain("100007");
+    }
     expectNoSentinel(texts);
   });
 });

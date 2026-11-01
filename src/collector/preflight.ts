@@ -2,17 +2,27 @@ import { ConfigError } from "./config.js";
 import { GitHubApiError, createGitHubClient } from "./github-client.js";
 import { ResponseShapeError, getRepository } from "./github-api.js";
 import type { SelfRepoInfo } from "./github-api.js";
+import type { CollectMode } from "../types.js";
 
 export type PreflightDecision =
-  | { action: "proceed"; selfRepoId: number }
+  | { action: "proceed"; selfRepoId: number; mode: CollectMode }
   | { action: "skip_template" }
   | { action: "fail"; reason: "public" | "undeterminable" };
 
-/** Fail closed: `proceed` only when the repository is exactly `private === true`. */
-export function decidePreflight(selfRepo: SelfRepoInfo | undefined): PreflightDecision {
+/**
+ * Fail closed: `proceed` only when the repository is exactly `private === true`, or exactly
+ * `private === false` with `public_mode` turned on.
+ */
+export function decidePreflight(
+  selfRepo: SelfRepoInfo | undefined,
+  options: { publicMode: boolean },
+): PreflightDecision {
   if (selfRepo === undefined) return { action: "fail", reason: "undeterminable" };
   if (selfRepo.isTemplate === true) return { action: "skip_template" };
-  if (selfRepo.private === true) return { action: "proceed", selfRepoId: selfRepo.id };
+  if (selfRepo.private === true) return { action: "proceed", selfRepoId: selfRepo.id, mode: "private" };
+  if (selfRepo.private === false && options.publicMode === true) {
+    return { action: "proceed", selfRepoId: selfRepo.id, mode: "public" };
+  }
   return { action: "fail", reason: "public" };
 }
 

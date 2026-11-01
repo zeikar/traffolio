@@ -24,6 +24,7 @@ const configSchema = z
   .object({
     // prefault (not default): Zod v4 default() skips parsing, so inner defaults would not apply.
     repositories: repositoriesSchema.prefault({}),
+    public_mode: z.boolean().default(false),
   })
   .strict();
 

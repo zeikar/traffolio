@@ -25,7 +25,7 @@ It is not:
 - a real-time tracker, a visitor identity tracker, or a per-visit log. It is a **daily** history;
 - a way to recover data older than 14 days that GitHub never gave you;
 - a tool for other people's or organizations' repositories. Only repositories owned by the token's personal account are collected;
-- supported on a public Traffolio repository. A public Traffolio repo is refused (see [Security](#security)).
+- a public dashboard by default. A public Traffolio repository is refused unless you opt in with `public_mode: true` to publish the numbers on purpose (see [Public mode](#public-mode)).
 
 ## How it works
 
@@ -39,7 +39,7 @@ It is not:
 ## Setup
 
 1. On the Traffolio template repository, click **Use this template**.
-2. Create the new repository under your personal account and set it to **Private**. A public Traffolio repository is refused.
+2. Create the new repository under your personal account and set it to **Private**. A public Traffolio repository is refused unless `public_mode: true` (see [Public mode](#public-mode)).
 3. Review `traffolio.config.yml` (see [Configuration](#configuration)). The default is `include_private: false`.
 4. Create a fine-grained personal access token (GitHub Settings → Developer settings → Personal access tokens → Fine-grained tokens):
    - Resource owner: your own GitHub account
@@ -67,7 +67,7 @@ For fine-grained tokens, GitHub's REST docs list **Administration: Read** as the
 | `GET /repos/{owner}/{repo}/stargazers/history` | `TRAFFIC_TOKEN` | Metadata: Read | Stars per day, by week (paginated; contains no user data) |
 | `GET /repos/{owner}/{repo}/forks` | `TRAFFIC_TOKEN` | Metadata: Read | Fork dates (paginated; only `created_at` is kept) |
 | `GET /repos/{owner}/{repo}/releases` | `TRAFFIC_TOKEN` | Contents: Read (private repositories only; optional) | Release asset download counts (paginated) |
-| `GET /repos/{GITHUB_REPOSITORY}` | `GITHUB_TOKEN` | Metadata: Read | Check that Traffolio itself is private and is not the template |
+| `GET /repos/{GITHUB_REPOSITORY}` | `GITHUB_TOKEN` | Metadata: Read | Check Traffolio's own visibility and that it is not the template |
 
 Star history and fork lists are fetched in full on every run (one request per 30 weeks of the repository's age, and per 100 forks), because an unchanged count does not prove the dates are unchanged: an unstar plus a new star leaves the total the same.
 
@@ -101,18 +101,20 @@ git add -A -- data assets README.md && git commit -m "chore(data): update traffi
 
 ## Security
 
-- **Never make this repository public.** Traffic numbers and the full Git history become public the moment you do, and a later detection by the collector cannot undo that. If you want a public dashboard, create a clean new repository instead.
+- **Never make this repository public.** Traffic numbers and the full Git history become public the moment you do, and a later detection by the collector cannot undo that. If you want a public dashboard, create a clean new repository with `public_mode: true` instead (see [Public mode](#public-mode)).
 - The token lives only in Actions Secrets. It is never written to data files, config, logs, the run Summary, or the SVG, and error messages do not dump raw HTTP responses.
 - `include_private` defaults to `false`, so private repositories are not collected unless you opt in.
 - **Visibility is re-checked on every run.** Traffolio calls `GET /repos/{GITHUB_REPOSITORY}` each time instead of trusting the event payload. Each collected repository's visibility is also re-read and stored; if a repository became private while `include_private` is `false`, that repository is no longer collected (its past data stays).
-- **Fail closed.** If Traffolio is public, or its visibility cannot be determined, nothing is collected or committed. If the repository is the template origin (`is_template`), the run exits successfully with a notice and collects nothing.
+- **Fail closed.** If Traffolio is public without `public_mode: true`, or its visibility cannot be determined, nothing is collected or committed. If the repository is the template origin (`is_template`), the run exits successfully with a notice and collects nothing.
 
 What failures look like in Actions:
 
 | Situation | Data | Run result |
 |---|---|---|
 | Missing `TRAFFIC_TOKEN`, 401, `GET /user` fails | Nothing written | Failed (exit 1) |
-| Traffolio repo is public, or visibility cannot be determined | Nothing written | Failed (exit 1) |
+| Traffolio repo is public without `public_mode: true`, or visibility cannot be determined | Nothing written | Failed (exit 1) |
+| `public_mode: true` in a public repo with `include_private: true` | Nothing written | Failed (exit 1) |
+| `public_mode: true` in a public repo whose `data/index.json` lists a private repository, or is unreadable | Nothing written | Failed (exit 1) |
 | All selected repositories failed | Nothing written | Failed (exit 1) |
 | Some repositories hit transient errors (5xx, network, rate limit) after retries | Successes are committed | Failed (exit 2) |
 | A repository returns 403/404 (no permission or traffic not available) | Status recorded, no numbers written | Succeeds with a warning; shown as `—` |
@@ -123,6 +125,17 @@ What failures look like in Actions:
 | Template origin repository | Nothing written | Succeeds (exit 0) with a notice |
 
 A failed run sends GitHub's normal notification, so a broken token does not go unnoticed.
+
+### Public mode
+
+`public_mode: true` lets a **public** Traffolio repository collect, for example a public demo dashboard. Use it only if you intend to publish these numbers:
+
+- **Everything it produces is public.** The traffic, star/fork, referrer and release data of the selected repositories, the README dashboard, and the repository's Actions logs and run Summaries can be read by anyone.
+- **Private repositories are never selected.** `include_private: true` is refused with a config error, and a run stops with nothing written if `data/index.json` already holds data about a private repository (or cannot be read): start from a clean repository rather than publishing data from a private past.
+- **A tracked repository that turns private** is no longer collected, and its index entry keeps its previous (public) metadata, only marked `missing`, so the dashboard does not reveal the change or its new name. Its earlier data stays, since it was already public.
+- Logs, the Summary and outputs name only the selected repositories; other repositories appear only in the discovered/selected counts.
+- **Use a separate fine-grained token** for the public repository's `TRAFFIC_TOKEN`, limited to the repositories you publish (Repository access: **Only select repositories**), so it cannot read traffic of anything else.
+- In a private repository `public_mode` has no effect; the run logs a notice and collects as usual.
 
 ## Data
 
@@ -165,7 +178,7 @@ Per-month file shape:
 
 ## Configuration
 
-`traffolio.config.yml` has a single `repositories` section. Unknown keys and wrong types are rejected with an error, and a missing key uses its default.
+`traffolio.config.yml` has a `repositories` section and a top-level `public_mode` switch. Unknown keys and wrong types are rejected with an error, and a missing key uses its default.
 
 | Key | Default | Meaning |
 |---|---|---|
@@ -174,7 +187,8 @@ Per-month file shape:
 | `include_private` | `false` | Also collect private repositories |
 | `include_forks` | `false` | Also collect forks |
 | `include_archived` | `false` | Also collect archived repositories |
-| `include_self` | `false` | Also collect the Traffolio repository itself. Still requires `include_private: true`, since Traffolio is private |
+| `include_self` | `false` | Also collect the Traffolio repository itself. Still requires `include_private: true`, since Traffolio is private (except in public mode) |
+| `public_mode` (top level) | `false` | Allow a public Traffolio repository to collect and publish the selected repositories' numbers; see [Public mode](#public-mode). Cannot be combined with `include_private: true` |
 
 Matching rules:
 
@@ -209,7 +223,8 @@ npm run dashboard:demo  # local dashboard from fixtures/demo (writes dashboard-d
 ### Troubleshooting
 
 - **The run failed because `TRAFFIC_TOKEN` is missing, or with a 401.** The secret is missing, expired, or revoked. Create a new token as in [Setup](#setup) step 4 and update the secret, then re-run.
-- **The run failed because the repository is public.** Make it private again. Anything committed while it was public is already exposed, so consider the history compromised and start from a fresh private repository if the data matters.
+- **The run failed because the repository is public.** Make it private again. Anything committed while it was public is already exposed, so consider the history compromised and start from a fresh private repository if the data matters. Set `public_mode: true` only if you intend to publish the numbers (see [Public mode](#public-mode)).
+- **A public-mode run failed with `public_private_data`.** The repository's `data/index.json` already holds data about a private repository, typically because it was a private Traffolio repository before. Create a clean new repository for public mode instead.
 - **The commit/push step failed (branch protection).** The workflow pushes to the default branch as `github-actions[bot]` using `GITHUB_TOKEN`. If branch protection or a ruleset requires pull requests, reviews, or status checks, that push is rejected. Allow the GitHub Actions bot to bypass the rule for this repository, or relax the rule on the default branch. Collected data from the failed run is not committed, and the next run collects it again.
 - **The push was rejected because of a concurrent push.** If you pushed at the same moment, the workflow rebases and retries once. If it still fails, just re-run the workflow.
 - **A repository's Status shows `<error> since <date>`.** The date is when that error first appeared; it stays the same while the same error repeats on later runs.

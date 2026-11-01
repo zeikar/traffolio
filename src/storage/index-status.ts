@@ -1,5 +1,6 @@
 import type { ExcludedRepo } from "../collector/filter.js";
 import type {
+  CollectMode,
   ErrorKind,
   IndexEntry,
   IndexFile,
@@ -39,10 +40,14 @@ function sortedRecord<T>(map: Map<string, T>): Record<string, T> {
 /**
  * Entry set is selected repos plus repos already in `prev`; an excluded repo
  * absent from `prev` is dropped so never-tracked repos stay out of data/.
+ *
+ * In public mode a repo that turned private keeps its previous entry, only marked
+ * `missing`, so the published index reveals neither the change nor its new metadata.
  */
 export function updateIndex(
   prev: IndexFile | undefined,
   selection: { selected: RepoMeta[]; excluded: ExcludedRepo[] },
+  mode: CollectMode,
 ): IndexFile {
   const known = prev?.repositories ?? {};
   const next = new Map<string, IndexEntry>();
@@ -52,7 +57,8 @@ export function updateIndex(
   }
   for (const { repo, reason } of selection.excluded) {
     const key = String(repo.id);
-    if (key in known) next.set(key, entryFrom(repo, `excluded:${reason}`));
+    if (!(key in known) || (mode === "public" && repo.private)) continue;
+    next.set(key, entryFrom(repo, `excluded:${reason}`));
   }
   for (const [key, entry] of Object.entries(known)) {
     if (!next.has(key)) next.set(key, { ...entry, tracking: "missing" });

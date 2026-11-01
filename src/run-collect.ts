@@ -11,6 +11,7 @@ import type { GitHubClient } from "./collector/github-client.js";
 import { normalizeTraffic } from "./collector/normalize.js";
 import type { NormalizedTraffic } from "./collector/normalize.js";
 import { checkTrafficToken, decidePreflight, lookupSelfRepository } from "./collector/preflight.js";
+import { PUBLIC_MODE_NO_EFFECT, checkPublicMode } from "./collector/public-mode.js";
 import { buildDashboardModel } from "./reporter/aggregate.js";
 import { MarkerError, assertMarkers, renderSection, replaceSection } from "./reporter/readme.js";
 import { readTopReferrers } from "./reporter/referrers.js";
@@ -23,7 +24,7 @@ import type { RepoResult } from "./storage/index-status.js";
 import { upsertDays } from "./storage/merge.js";
 import { createStore } from "./storage/store.js";
 import type { Store } from "./storage/store.js";
-import type { ErrorKind, MonthFile, Outcome, RepoMeta } from "./types.js";
+import type { CollectMode, ErrorKind, MonthFile, Outcome, RepoMeta } from "./types.js";
 
 export interface CollectDeps {
   env: Record<string, string | undefined>;
@@ -47,6 +48,7 @@ type FatalReason =
   | "readme_markers"
   | "visibility_public"
   | "visibility_undeterminable"
+  | "public_private_data"
   | "missing_token"
   | "auth"
   | "user_lookup"
@@ -85,7 +87,8 @@ const VISIBILITY_MESSAGES = {
     "or the lookup failed), so it is treated as public. Nothing collected or written.",
   public:
     "This Traffolio repository is public. Collection is refused so traffic data is never published. " +
-    "Nothing collected or written.",
+    "Nothing collected or written. " +
+    "Set public_mode: true in traffolio.config.yml only if you intend to publish these numbers.",
 } as const;
 
 const TEMPLATE_MESSAGE =
@@ -155,6 +158,7 @@ async function collect(
       now,
       log,
     }),
+    { publicMode: config.public_mode },
   );
   if (decision.action === "skip_template") {
     log(TEMPLATE_MESSAGE);
@@ -165,6 +169,12 @@ async function collect(
   }
   if (decision.action === "fail") {
     throw new FatalError(`visibility_${decision.reason}`, VISIBILITY_MESSAGES[decision.reason]);
+  }
+  if (decision.mode === "public") {
+    const violation = checkPublicMode(config, await fatalOnError("unexpected", () => store.readIndex()));
+    if (violation) throw new FatalError(violation.reason, violation.message);
+  } else if (config.public_mode) {
+    log(PUBLIC_MODE_NO_EFFECT);
   }
 
   const token = await fatalOnError("missing_token", () => checkTrafficToken(env));
@@ -195,7 +205,15 @@ async function collect(
     collectExtras(client, store, selection.selected, runDate, log, trafficRateLimited),
   );
 
-  const { commit, dataThroughDate } = await writeResults(store, readme, selection, outcomes, extras.files, runDate);
+  const { commit, dataThroughDate } = await writeResults(
+    store,
+    readme,
+    selection,
+    outcomes,
+    extras.files,
+    runDate,
+    decision.mode,
+  );
   const outcome = counts.transient > 0 || extras.partial ? "partial" : "ok";
   return {
     result: { exitCode: outcome === "partial" ? 2 : 0, outcome, commit, dataThroughDate },
@@ -264,8 +282,9 @@ async function writeResults(
   outcomes: RepoOutcome[],
   extras: ExtrasFiles,
   runDate: string,
+  mode: CollectMode,
 ): Promise<{ commit: boolean; dataThroughDate: string | null }> {
-  const index = updateIndex(await store.readIndex(), selection);
+  const index = updateIndex(await store.readIndex(), selection, mode);
   const status = updateStatus(await store.readStatus(), outcomes.map(toRepoResult), runDate);
 
   const monthFilesByRepo: Record<string, MonthFile[]> = {};

@@ -25,21 +25,41 @@ function lookup(fetchImpl: typeof globalThis.fetch, overrides: Partial<Parameter
 const respond = (body: string, status = 200) => async () => new Response(body, { status });
 
 describe("decidePreflight", () => {
-  it("proceeds with the id for a private repo", () => {
-    expect(decidePreflight({ id: 7, private: true, isTemplate: false })).toEqual({ action: "proceed", selfRepoId: 7 });
+  const off = { publicMode: false };
+  const on = { publicMode: true };
+
+  it("proceeds in private mode for a private repo, whatever public_mode says", () => {
+    for (const options of [off, on]) {
+      expect(decidePreflight({ id: 7, private: true, isTemplate: false }, options)).toEqual({
+        action: "proceed",
+        selfRepoId: 7,
+        mode: "private",
+      });
+    }
   });
 
-  it("fails for a public repo", () => {
-    expect(decidePreflight({ id: 7, private: false, isTemplate: false })).toEqual({ action: "fail", reason: "public" });
+  it("fails for a public repo without public_mode", () => {
+    expect(decidePreflight({ id: 7, private: false, isTemplate: false }, off)).toEqual({ action: "fail", reason: "public" });
+  });
+
+  it("proceeds in public mode for a public repo with public_mode", () => {
+    expect(decidePreflight({ id: 7, private: false, isTemplate: false }, on)).toEqual({
+      action: "proceed",
+      selfRepoId: 7,
+      mode: "public",
+    });
   });
 
   it("skips a template, before checking visibility", () => {
-    expect(decidePreflight({ id: 7, private: false, isTemplate: true })).toEqual({ action: "skip_template" });
-    expect(decidePreflight({ id: 7, private: true, isTemplate: true })).toEqual({ action: "skip_template" });
+    for (const options of [off, on]) {
+      expect(decidePreflight({ id: 7, private: false, isTemplate: true }, options)).toEqual({ action: "skip_template" });
+      expect(decidePreflight({ id: 7, private: true, isTemplate: true }, options)).toEqual({ action: "skip_template" });
+    }
   });
 
-  it("fails as undeterminable without info", () => {
-    expect(decidePreflight(undefined)).toEqual({ action: "fail", reason: "undeterminable" });
+  it("fails as undeterminable without info, even with public_mode", () => {
+    expect(decidePreflight(undefined, off)).toEqual({ action: "fail", reason: "undeterminable" });
+    expect(decidePreflight(undefined, on)).toEqual({ action: "fail", reason: "undeterminable" });
   });
 });
 
@@ -53,14 +73,14 @@ describe("lookupSelfRepository", () => {
   it("returns the normalized info for the public fixture", async () => {
     const { promise } = lookup(respond(fixtureText("self-repo-public")));
     const info = await promise;
-    expect(decidePreflight(info)).toEqual({ action: "fail", reason: "public" });
+    expect(decidePreflight(info, { publicMode: false })).toEqual({ action: "fail", reason: "public" });
   });
 
   it("returns undefined for the malformed fixture", async () => {
     const { promise, log } = lookup(respond(fixtureText("self-repo-malformed")));
     const info = await promise;
     expect(info).toBeUndefined();
-    expect(decidePreflight(info)).toEqual({ action: "fail", reason: "undeterminable" });
+    expect(decidePreflight(info, { publicMode: false })).toEqual({ action: "fail", reason: "undeterminable" });
     expect(log).toHaveBeenCalledWith("self-repository lookup failed (response_shape)");
   });
 

@@ -46,10 +46,11 @@ describe("updateIndex", () => {
       schemaVersion: 1,
       repositories: { "1": entry("old") },
     };
-    const out = updateIndex(prev, {
-      selected: [meta(1, "new")],
-      excluded: [],
-    });
+    const out = updateIndex(
+      prev,
+      { selected: [meta(1, "new")], excluded: [] },
+      "private",
+    );
     expect(Object.keys(out.repositories)).toEqual(["1"]);
     expect(out.repositories["1"]?.name).toBe("new");
     expect(out.repositories["1"]?.fullName).toBe("me/new");
@@ -60,21 +61,50 @@ describe("updateIndex", () => {
       schemaVersion: 1,
       repositories: { "1": entry("a") },
     };
-    const out = updateIndex(prev, {
-      selected: [],
-      excluded: [{ repo: meta(1, "a", { private: true }), reason: "private" }],
-    });
+    const out = updateIndex(
+      prev,
+      {
+        selected: [],
+        excluded: [{ repo: meta(1, "a", { private: true }), reason: "private" }],
+      },
+      "private",
+    );
     expect(out.repositories["1"]?.private).toBe(true);
     expect(out.repositories["1"]?.tracking).toBe("excluded:private");
   });
 
+  it("in public mode, keeps the previous entry of a repo that turned private, only marked missing", () => {
+    const prev: IndexFile = {
+      schemaVersion: 1,
+      repositories: { "1": entry("a", { stars: 3 }), "2": entry("b") },
+    };
+    const out = updateIndex(
+      prev,
+      {
+        selected: [],
+        excluded: [
+          { repo: meta(1, "renamed", { private: true, stargazersCount: 50 }), reason: "private" },
+          { repo: meta(2, "b", { fork: true }), reason: "fork" },
+        ],
+      },
+      "public",
+    );
+    expect(out.repositories["1"]).toEqual(entry("a", { stars: 3, tracking: "missing" }));
+    expect(stableStringify(out)).not.toContain("renamed");
+    expect(out.repositories["2"]).toMatchObject({ fork: true, tracking: "excluded:fork" });
+  });
+
   it("drops excluded repos that were never in prev", () => {
-    const out = updateIndex(undefined, {
-      selected: [meta(1, "a")],
-      excluded: [
-        { repo: meta(2, "secret-notes", { private: true }), reason: "private" },
-      ],
-    });
+    const out = updateIndex(
+      undefined,
+      {
+        selected: [meta(1, "a")],
+        excluded: [
+          { repo: meta(2, "secret-notes", { private: true }), reason: "private" },
+        ],
+      },
+      "private",
+    );
     expect(Object.keys(out.repositories)).toEqual(["1"]);
     expect(stableStringify(out)).not.toContain("secret-notes");
   });
@@ -84,7 +114,7 @@ describe("updateIndex", () => {
       schemaVersion: 1,
       repositories: { "5": entry("gone", { stars: 9 }) },
     };
-    const out = updateIndex(prev, { selected: [], excluded: [] });
+    const out = updateIndex(prev, { selected: [], excluded: [] }, "private");
     expect(out.repositories["5"]).toEqual(
       entry("gone", { stars: 9, tracking: "missing" }),
     );
@@ -92,10 +122,11 @@ describe("updateIndex", () => {
   });
 
   it("sorts repository keys", () => {
-    const out = updateIndex(undefined, {
-      selected: [meta(30, "c"), meta(100, "a"), meta(2, "b")],
-      excluded: [],
-    });
+    const out = updateIndex(
+      undefined,
+      { selected: [meta(30, "c"), meta(100, "a"), meta(2, "b")], excluded: [] },
+      "private",
+    );
     expect(Object.keys(out.repositories)).toEqual(["2", "30", "100"]);
   });
 });

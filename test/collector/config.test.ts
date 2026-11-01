@@ -11,6 +11,7 @@ const defaults = {
     include_archived: false,
     include_self: false,
   },
+  public_mode: false,
 };
 
 describe("parseConfig", () => {
@@ -42,6 +43,11 @@ describe("parseConfig", () => {
 
   it("parses include: [] (selects nothing)", () => {
     expect(parseConfig("repositories:\n  include: []\n").repositories.include).toEqual([]);
+  });
+
+  it("parses public_mode and rejects a non-boolean", () => {
+    expect(parseConfig("public_mode: true\n").public_mode).toBe(true);
+    expect(() => parseConfig("public_mode: 'yes'\n")).toThrow(/public_mode/);
   });
 
   it("surfaces YAML syntax errors as ConfigError", () => {

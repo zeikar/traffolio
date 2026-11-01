@@ -293,6 +293,9 @@ describe("fatal: nothing written, commit=false, exit 1", () => {
     const before = await snapshot();
     const r = await run({ routes: { [SELF_PATH]: () => json(fixtureText("self-repo-public")) } });
     expectFatal(r, "visibility_public");
+    expect(r.lines.join("\n")).toContain(
+      "Set public_mode: true in traffolio.config.yml only if you intend to publish these numbers.",
+    );
     expect(r.requested).toEqual([SELF_PATH]);
     expect(await snapshot()).toEqual(before);
   });

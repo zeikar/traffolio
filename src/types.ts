@@ -35,6 +35,9 @@ export type ExcludeReason =
   | 'exclude_pattern'
   | 'not_included';
 
+/** `public`: a public Traffolio repository publishing traffic under `public_mode`. */
+export type CollectMode = 'private' | 'public';
+
 export type Tracking = 'tracked' | `excluded:${ExcludeReason}` | 'missing';
 
 export interface IndexEntry {
