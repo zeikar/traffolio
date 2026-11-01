@@ -198,6 +198,30 @@ Matching rules:
 - Traffolio itself is recognized by its repository ID (from `GITHUB_REPOSITORY`), not by name.
 - Only repositories owned by the token's account are candidates; repositories you merely contribute to are ignored.
 
+## Updating Traffolio
+
+Merge the latest Traffolio into your repository, keeping your own config, README, data and charts:
+
+```bash
+git remote add traffolio https://github.com/zeikar/traffolio   # skip if already added
+git fetch traffolio
+git merge --no-commit --no-ff traffolio/main
+git checkout HEAD -- traffolio.config.yml README.md data assets
+git commit -m "Update Traffolio"
+git push
+```
+
+(`assets` exists after your first collection; drop it from the line before that.)
+
+A repository made from the template shares no history with Traffolio until its first update. For that one, in place of the merge line, run these two, which replace your files with Traffolio's before the line after them restores your own. Commit or stash your changes first: unlike a merge, they overwrite uncommitted work without asking.
+
+```bash
+git merge --no-commit --allow-unrelated-histories -s ours traffolio/main
+git read-tree -u --reset traffolio/main
+```
+
+Before committing, `git status` shows what they delete: files Traffolio no longer has, and any you added yourself, which `git checkout HEAD -- <file>` keeps. New settings come with defaults; if a release renames or removes one you set, the collector stops with a config error naming it.
+
 ## Operations
 
 - **Schedule.** The workflow runs daily at 03:37 UTC (an off-the-hour time, because GitHub delays runs at the top of the hour). Scheduled runs can still be delayed or skipped. If one is missed, run it manually from Actions → **Traffolio Collect** → **Run workflow**. A missed day is recoverable as long as you re-run within 14 days; the dashboard's data-through date and `—` cells show any gap.
