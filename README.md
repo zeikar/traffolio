@@ -8,11 +8,13 @@ GitHub's Traffic API only returns the last 14 days of views and clones. Traffoli
 > **No server. No database. Just GitHub.** means there is nothing for you to host or operate. It does not mean GitHub infrastructure is unused: Actions runs the collector, Git stores the data, and the README displays it.
 
 <!-- TRAFFOLIO:START -->
-**No traffic data collected yet.** The dashboard below is sample data. After the first collection run, this block is replaced with your real numbers. See [Setup](#setup).
+**No traffic data collected yet.** After the first collection run, this block is replaced with your own numbers. See [Setup](#setup).
 
-![Sample dashboard — sample data](docs/demo/traffic.svg)
+Live example: daily traffic of [zeikar/traffolio](https://github.com/zeikar/traffolio), collected by Traffolio in public mode in [zeikar/traffolio-demo](https://github.com/zeikar/traffolio-demo).
 
-[See the full sample section (sample data)](docs/demo/README-section.md)
+![Live traffic of zeikar/traffolio](https://raw.githubusercontent.com/zeikar/traffolio-demo/main/assets/traffic.svg)
+
+[See a full sample section (sample data)](docs/demo/README-section.md)
 <!-- TRAFFOLIO:END -->
 
 ## What it is, and what it is not
