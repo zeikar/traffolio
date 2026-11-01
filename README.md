@@ -224,7 +224,7 @@ Before committing, `git status` shows what they delete: files Traffolio no longe
 
 ## Operations
 
-- **Schedule.** The workflow runs daily at 03:37 UTC (an off-the-hour time, because GitHub delays runs at the top of the hour). Scheduled runs can still be delayed or skipped. If one is missed, run it manually from Actions → **Traffolio Collect** → **Run workflow**. A missed day is recoverable as long as you re-run within 14 days; the dashboard's data-through date and `—` cells show any gap.
+- **Schedule.** The workflow runs daily at 03:43 UTC (an off-the-hour time, because GitHub delays runs at the top of the hour). Scheduled runs can still be delayed or skipped. If one is missed, run it manually from Actions → **Traffolio Collect** → **Run workflow**. A missed day is recoverable as long as you re-run within 14 days; the dashboard's data-through date and `—` cells show any gap.
 - **Token expiry.** Fine-grained tokens expire. Renew before the expiry date and replace the `TRAFFIC_TOKEN` secret. If collection is broken for more than 14 days, the older days are lost permanently because GitHub no longer provides them.
 - **Branch protection.** Rules that block pushes to the default branch also block the bot's commit. See Troubleshooting.
 - **Private repository traffic.** Whether traffic is available for private repositories depends on your GitHub plan and the token's permissions. Unavailable repositories are recorded in `data/status.json` and shown as `—`, never as zero.
