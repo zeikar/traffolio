@@ -8,7 +8,7 @@ import type {
   Tracking,
 } from "../types.js";
 
-export type DayMap = Map<string, DayMetrics>;
+export type DayMap = ReadonlyMap<string, DayMetrics>;
 
 /**
  * Sums over the keys that exist in a date range. `views`/`clones` are `null`
@@ -76,7 +76,7 @@ const noData = (missingDays = 0): PeriodSum => ({
 });
 
 export function daysFromMonthFiles(files: MonthFile[]): DayMap {
-  const days: DayMap = new Map();
+  const days = new Map<string, DayMetrics>();
   for (const file of files) {
     for (const [date, metrics] of Object.entries(file.days)) days.set(date, metrics);
   }
