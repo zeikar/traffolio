@@ -261,6 +261,10 @@ npm run dashboard:demo  # local dashboard from fixtures/demo (writes dashboard-d
 - **A repository shows `—`.** The API returned 403/404 for it (permissions or plan), or it has not been collected yet. Check `data/status.json` for the reason, and check that the token covers that repository.
 - **Some repositories failed (exit 2).** These were transient errors such as rate limits or 5xx responses. Successful repositories were committed; re-run the workflow to retry the rest.
 
+## Contributing
+
+See [CONTRIBUTING.md](CONTRIBUTING.md); changes are listed in [CHANGELOG.md](CHANGELOG.md).
+
 ## License
 
 See [LICENSE](LICENSE).
