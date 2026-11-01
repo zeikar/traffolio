@@ -3,15 +3,19 @@ import type { PathEntry, ReferrerEntry } from "../types.js";
 import { fetchAllPages, parseBody } from "./github-api.js";
 import type { GitHubClient } from "./github-client.js";
 
-// Makes the stargazers listing include `starred_at`.
-const STAR_MEDIA_TYPE = "application/vnd.github.star+json";
 const PAGE = { per_page: 100, page: 1 };
+// The star history endpoint caps per_page at 30.
+const STAR_HISTORY_PAGE = { per_page: 30, page: 1 };
 
 // Validated up front so a malformed timestamp is a shape error, not a crash while bucketing.
 const Timestamp = z.iso.datetime({ offset: true });
 
-// Only the dates are read; user objects in these responses are dropped by the schema.
-const Stargazer = z.object({ starred_at: Timestamp });
+const Count = z.number().int().nonnegative();
+// `week` is the week's start (Sunday) in Unix seconds; `days` runs Sunday..Saturday.
+// `total` is checked for shape only and then dropped: if it ever disagreed with the sum of `days`,
+// only `days` says which dates the stars belong to, and the stored history is per date.
+const StarWeek = z.object({ week: z.number().int(), total: Count, days: z.array(Count).length(7) });
+// Only the dates are read; owner objects in the fork listing are dropped by the schema.
 const Fork = z.object({ created_at: Timestamp });
 
 const Referrer = z.object({ referrer: z.string(), count: z.number(), uniques: z.number() });
@@ -35,10 +39,17 @@ export interface ReleaseItem {
   assets: { name: string; downloadCount: number }[];
 }
 
-/** `starred_at` of every current stargazer. */
-export async function listStargazerTimestamps(client: GitHubClient, fullName: string): Promise<string[]> {
-  const items = await fetchAllPages(client, `/repos/${fullName}/stargazers`, PAGE, Stargazer, { accept: STAR_MEDIA_TYPE });
-  return items.map((s) => s.starred_at);
+export interface StarWeekItem {
+  /** Unix seconds of the week's start. */
+  week: number;
+  /** Stars on each day of the week, Sunday first. */
+  days: number[];
+}
+
+/** GitHub's weekly star history of current stars, every page (most recent week first). */
+export async function listStarHistory(client: GitHubClient, fullName: string): Promise<StarWeekItem[]> {
+  const items = await fetchAllPages(client, `/repos/${fullName}/stargazers/history`, STAR_HISTORY_PAGE, StarWeek);
+  return items.map((w) => ({ week: w.week, days: w.days }));
 }
 
 /** `created_at` of every existing fork. */

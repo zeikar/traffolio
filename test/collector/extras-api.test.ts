@@ -5,7 +5,7 @@ import {
   getReferrers,
   listForkTimestamps,
   listReleases,
-  listStargazerTimestamps,
+  listStarHistory,
 } from "../../src/collector/extras-api.js";
 import { PageLimitError, ResponseShapeError } from "../../src/collector/github-api.js";
 import { createGitHubClient } from "../../src/collector/github-client.js";
@@ -25,44 +25,51 @@ function json(body: unknown, headers: Record<string, string> = {}): Response {
 }
 
 // GitHub's Link URLs for repository listings use the numeric /repositories/{id} form.
-const STARS_PAGE2 = "https://api.github.com/repositories/100001/stargazers?per_page=100&page=2";
+const HISTORY_PAGE2 = "https://api.github.com/repositories/100001/stargazers/history?per_page=30&page=2";
 
-describe("listStargazerTimestamps", () => {
-  it("follows Link across two pages with the star media type and returns only starred_at", async () => {
+describe("listStarHistory", () => {
+  it("follows Link across two pages and returns week and days of every week, in order", async () => {
     const { client, fetch } = setup((url) =>
       url.searchParams.get("page") === "2"
-        ? json(fixture("stargazers-page-2"))
-        : json(fixture("stargazers-page-1"), { link: `<${STARS_PAGE2}>; rel="next"` }),
+        ? json(fixture("star-history-page-2"))
+        : json(fixture("star-history-page-1"), { link: `<${HISTORY_PAGE2}>; rel="next"` }),
     );
-    const stamps = await listStargazerTimestamps(client, "octo-sample/sample-cli");
+    const weeks = await listStarHistory(client, "octo-sample/sample-cli");
 
-    const pages = [fixture("stargazers-page-1"), fixture("stargazers-page-2")] as { starred_at: string }[][];
-    expect(stamps).toEqual(pages.flat().map((s) => s.starred_at));
-    expect(stamps).toHaveLength(42);
-    expect(JSON.stringify(stamps)).not.toContain("stargazer-handle");
+    const pages = [fixture("star-history-page-1"), fixture("star-history-page-2")] as { week: number; days: number[] }[][];
+    expect(weeks).toEqual(pages.flat().map(({ week, days }) => ({ week, days })));
+    expect(weeks).toHaveLength(40);
 
     const urls = fetch.mock.calls.map(([input]) => new URL(String(input)));
-    expect(urls[0]!.pathname).toBe("/repos/octo-sample/sample-cli/stargazers");
-    expect(urls[0]!.searchParams.get("per_page")).toBe("100");
-    expect(String(urls[1])).toBe(STARS_PAGE2);
+    expect(urls[0]!.pathname).toBe("/repos/octo-sample/sample-cli/stargazers/history");
+    expect(urls[0]!.searchParams.get("per_page")).toBe("30");
+    expect(String(urls[1])).toBe(HISTORY_PAGE2);
     for (const [, init] of fetch.mock.calls) {
-      expect(new Headers(init?.headers).get("accept")).toBe("application/vnd.github.star+json");
+      expect(new Headers(init?.headers).get("accept")).toBe("application/vnd.github+json");
     }
   });
 
-  it("rejects a plain user list (star media type ignored) as a shape error", async () => {
-    const { client } = setup(() => json([{ login: "someone", id: 1 }]));
-    await expect(listStargazerTimestamps(client, "o/r")).rejects.toBeInstanceOf(ResponseShapeError);
+  it("ignores unknown keys", async () => {
+    const { client } = setup(() => json([{ week: 1792886400, total: 1, days: [0, 1, 0, 0, 0, 0, 0], extra: "x" }]));
+    expect(await listStarHistory(client, "o/r")).toEqual([{ week: 1792886400, days: [0, 1, 0, 0, 0, 0, 0] }]);
   });
 
-  it("rejects a malformed starred_at", async () => {
-    const { client } = setup(() => json([{ starred_at: "yesterday" }]));
-    await expect(listStargazerTimestamps(client, "o/r")).rejects.toBeInstanceOf(ResponseShapeError);
+  it.each([
+    ["six days", { week: 1792886400, total: 0, days: [0, 0, 0, 0, 0, 0] }],
+    ["eight days", { week: 1792886400, total: 0, days: [0, 0, 0, 0, 0, 0, 0, 0] }],
+    ["a fractional count", { week: 1792886400, total: 1, days: [0.5, 0.5, 0, 0, 0, 0, 0] }],
+    ["a negative count", { week: 1792886400, total: 0, days: [-1, 1, 0, 0, 0, 0, 0] }],
+    ["a string week", { week: "2026-10-25", total: 0, days: [0, 0, 0, 0, 0, 0, 0] }],
+    ["a missing total", { week: 1792886400, days: [0, 0, 0, 0, 0, 0, 0] }],
+    ["a stargazer object", { starred_at: "2026-10-25T00:00:00Z", user: { login: "someone" } }],
+  ])("rejects %s as a shape error", async (_label, item) => {
+    const { client } = setup(() => json([item]));
+    await expect(listStarHistory(client, "o/r")).rejects.toBeInstanceOf(ResponseShapeError);
   });
 
   it("stops at the page limit", async () => {
-    const { client } = setup(() => json([], { link: `<${STARS_PAGE2}>; rel="next"` }));
-    await expect(listStargazerTimestamps(client, "o/r")).rejects.toBeInstanceOf(PageLimitError);
+    const { client } = setup(() => json([], { link: `<${HISTORY_PAGE2}>; rel="next"` }));
+    await expect(listStarHistory(client, "o/r")).rejects.toBeInstanceOf(PageLimitError);
   });
 });
 

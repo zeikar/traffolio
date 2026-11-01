@@ -24,7 +24,7 @@ const repos = Object.keys(data.repos).map(function (id) { return Object.assign({
 const tracked = repos.filter(function (r) { return r.tracking === "tracked"; });
 // Without any growth file (data collected before star history existed) the page looks as before.
 const anyGrowth = repos.some(function (r) { return r.growth; });
-const STAR_NOTE = "Based on current stargazers; un-stars aren't counted, so past totals may be slightly low.";
+const STAR_NOTE = "Based on current stars; un-stars aren't counted, and a star's date may be off by a day.";
 
 /** "#repo=<id>" deep link to one repository. */
 function repoFromHash() {

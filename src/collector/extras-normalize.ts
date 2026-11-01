@@ -1,5 +1,5 @@
 import type { PathEntry, ReferrerEntry, ReleaseInfo } from "../types.js";
-import type { ReleaseItem } from "./extras-api.js";
+import type { ReleaseItem, StarWeekItem } from "./extras-api.js";
 import { toUtcDate } from "./normalize.js";
 
 /** Number of timestamps on each UTC date. */
@@ -8,6 +8,21 @@ export function countByDate(timestamps: string[]): Record<string, number> {
   for (const ts of timestamps) {
     const date = toUtcDate(ts);
     counts[date] = (counts[date] ?? 0) + 1;
+  }
+  return counts;
+}
+
+const DAY_MS = 86_400_000;
+
+/** Stars on each date: day i of a week is the week's UTC date plus i days. Days without stars are omitted. */
+export function countStarHistory(weeks: StarWeekItem[]): Record<string, number> {
+  const counts: Record<string, number> = {};
+  for (const { week, days } of weeks) {
+    days.forEach((count, i) => {
+      if (count === 0) return;
+      const date = new Date(week * 1000 + i * DAY_MS).toISOString().slice(0, 10);
+      counts[date] = (counts[date] ?? 0) + count;
+    });
   }
   return counts;
 }

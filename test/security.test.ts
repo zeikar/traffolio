@@ -27,7 +27,7 @@ placeholder
 <!-- TRAFFOLIO:END -->
 `;
 const PAGE2_URL = "https://api.github.com/user/repos?affiliation=owner&per_page=100&page=2";
-const STARS_PAGE2_URL = "https://api.github.com/repositories/100001/stargazers?per_page=100&page=2";
+const HISTORY_PAGE2_URL = "https://api.github.com/repositories/100001/stargazers/history?per_page=30&page=2";
 
 type Override = (url: URL) => Response | undefined;
 
@@ -45,28 +45,24 @@ function route(url: URL, override: Override): Response {
   }
   if (/^\/repos\/octo-sample\/[^/]+\/traffic\/views$/.test(path)) return ok(fixtureText("traffic-views"));
   if (/^\/repos\/octo-sample\/[^/]+\/traffic\/clones$/.test(path)) return ok(fixtureText("traffic-clones"));
-  if (path === "/repos/octo-sample/sample-cli/stargazers") {
-    return ok(fixtureText("stargazers-page-1"), { link: `<${STARS_PAGE2_URL}>; rel="next"` });
+  if (path === "/repos/octo-sample/sample-cli/stargazers/history") {
+    return ok(fixtureText("star-history-page-1"), { link: `<${HISTORY_PAGE2_URL}>; rel="next"` });
   }
-  if (path === "/repositories/100001/stargazers") return ok(fixtureText("stargazers-page-2"));
+  if (path === "/repositories/100001/stargazers/history") return ok(fixtureText("star-history-page-2"));
   if (path === "/repos/octo-sample/sample-cli/forks") return ok(fixtureText("forks"));
   if (path === "/repos/octo-sample/sample-cli/releases") return ok(fixtureText("releases"));
-  if (/^\/repos\/octo-sample\/[^/]+\/(stargazers|forks|releases)$/.test(path)) return ok("[]");
+  if (/^\/repos\/octo-sample\/[^/]+\/(stargazers\/history|forks|releases)$/.test(path)) return ok("[]");
   if (/\/traffic\/popular\/referrers$/.test(path)) return ok(fixtureText("traffic-referrers"));
   if (/\/traffic\/popular\/paths$/.test(path)) return ok(fixtureText("traffic-paths"));
   return new Response("{}", { status: 404 });
 }
 
-/** Logins of stargazers and fork owners in the fixtures: user data that must never be stored. */
-const USER_LOGINS = [
-  ...[1, 2].flatMap((page) =>
-    (JSON.parse(fixtureText(`stargazers-page-${page}`)) as { user: { login: string } }[]).map((s) => s.user.login),
-  ),
-  ...(JSON.parse(fixtureText("forks")) as { owner: { login: string } }[]).map((f) => f.owner.login),
-];
+/** Fork-owner logins in the fixtures: user data that must never be stored. (Star history has no users.) */
+const FORK_OWNER_LOGINS = (JSON.parse(fixtureText("forks")) as { owner: { login: string } }[]).map((f) => f.owner.login);
 
 const isTraffic = (url: URL) => /\/traffic\/(views|clones)$/.test(url.pathname);
-const isExtra = (url: URL) => /\/(stargazers|forks|releases|traffic\/popular\/(referrers|paths))$/.test(url.pathname);
+const isExtra = (url: URL) =>
+  /\/(stargazers\/history|forks|releases|traffic\/popular\/(referrers|paths))$/.test(url.pathname);
 const failing = (status: number, match: (url: URL) => boolean): Override => (url) =>
   match(url) ? new Response(JSON.stringify({ message: "BODY_SENTINEL" }), { status }) : undefined;
 
@@ -140,18 +136,18 @@ describe("token and response-body hygiene", () => {
     expectNoSentinel(texts);
   });
 
-  it("stores no stargazer or fork-owner login anywhere", async () => {
+  it("stores no fork-owner login anywhere", async () => {
     const { result, texts } = await runAndCollectOutputs(() => undefined);
     expect(result.outcome).toBe("ok");
     expect(Object.keys(texts).some((name) => name.includes("data/growth/100001.json"))).toBe(true);
-    expect(USER_LOGINS.length).toBe(47);
+    expect(FORK_OWNER_LOGINS.length).toBe(5);
     for (const [name, text] of Object.entries(texts)) {
-      for (const login of USER_LOGINS) expect(text, `${login} leaked into ${name}`).not.toContain(login);
+      for (const login of FORK_OWNER_LOGINS) expect(text, `${login} leaked into ${name}`).not.toContain(login);
     }
   });
 
   it.each([
-    ["401 on stargazers", 401, "fatal"],
+    ["401 on stargazers/history", 401, "fatal"],
     ["403 on referrers", 403, "ok"],
     ["500 on releases", 500, "partial"],
   ] as const)("%s leaks neither token nor body", async (label, code, outcome) => {

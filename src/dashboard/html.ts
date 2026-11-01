@@ -184,7 +184,7 @@ export function renderDashboardHtml(input: DashboardInput): string {
 <section class="panel" id="stars-panel" hidden>
 <div class="panelhead"><h2>Stars over time</h2><p id="stars-sub"></p></div>
 <div class="chart" id="stars-chart"></div>
-<p class="foot">Based on current stargazers; un-stars aren&rsquo;t counted, so past totals may be slightly low.</p>
+<p class="foot">Based on current stars; un-stars aren&rsquo;t counted, and a star&rsquo;s date may be off by a day.</p>
 </section>
 <section class="panel" id="ref-panel" hidden>
 <div class="panelhead"><h2>Top referrers &amp; pages</h2><p id="ref-sub"></p></div>

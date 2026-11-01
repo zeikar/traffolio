@@ -97,7 +97,7 @@ function niceScale(maxValue) {
 }
 
 // ---- stars & forks (data/growth) ------------------------------------------
-// History is rebuilt from the current stargazer/fork lists, so it goes back
+// History is rebuilt from GitHub's star history and the fork list, so it goes back
 // before the traffic history; "all" therefore starts at the earliest star.
 
 /** First day of the period ending at end; null for "all" (unbounded). */

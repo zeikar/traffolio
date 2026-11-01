@@ -48,15 +48,6 @@ describe("createGitHubClient", () => {
     expect(sent.get("user-agent")).toBe("traffolio");
   });
 
-  it("replaces only the Accept header when a media type is passed", async () => {
-    const { client, fetch } = setup(res(200, []));
-    await client.get("/repos/o/r/stargazers", { per_page: 100 }, { accept: "application/vnd.github.star+json" });
-    const sent = new Headers(fetch.mock.calls[0]![1]?.headers);
-    expect(sent.get("accept")).toBe("application/vnd.github.star+json");
-    expect(sent.get("authorization")).toBe(`Bearer ${TOKEN}`);
-    expect(sent.get("x-github-api-version")).toBe("2026-03-10");
-  });
-
   it("accepts an absolute api.github.com URL (Link rel=next)", async () => {
     const { client, fetch } = setup(res(200, []));
     await client.get("https://api.github.com/user/repos?page=2&per_page=100");

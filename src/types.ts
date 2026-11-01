@@ -77,10 +77,11 @@ export interface StatusFile {
 }
 
 /**
- * data/growth/<repoId>.json — stars and forks per UTC date, rebuilt from the
- * current stargazer and fork lists (GitHub reports `starred_at` / `created_at`),
- * so history goes back to the repository's start. Un-starred users and deleted
- * forks are absent, so past totals can be slightly lower than they really were.
+ * data/growth/<repoId>.json — stars and forks per UTC date, rebuilt from GitHub's
+ * weekly star history (per-day counts, possibly a day off since GitHub's days
+ * aren't UTC) and the fork list (`created_at`), so history goes back to the
+ * repository's start. Both cover only current stars and existing forks, so past
+ * totals can be slightly lower than they really were.
  */
 export interface GrowthFile {
   schemaVersion: 1;

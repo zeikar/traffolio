@@ -3,9 +3,9 @@ import {
   getReferrers,
   listForkTimestamps,
   listReleases,
-  listStargazerTimestamps,
+  listStarHistory,
 } from "./collector/extras-api.js";
-import { countByDate, sortPaths, sortReferrers, summarizeReleases } from "./collector/extras-normalize.js";
+import { countByDate, countStarHistory, sortPaths, sortReferrers, summarizeReleases } from "./collector/extras-normalize.js";
 import { PageLimitError, ResponseShapeError } from "./collector/github-api.js";
 import { GitHubApiError } from "./collector/github-client.js";
 import type { GitHubClient } from "./collector/github-client.js";
@@ -111,9 +111,9 @@ export async function collectExtras(
   return done();
 }
 
-/** Both lists are refetched every run: an unchanged count doesn't prove the dates are (unstar + new star). */
+/** Both are refetched every run: an unchanged count doesn't prove the dates are (unstar + new star). */
 async function growthFile(client: GitHubClient, repo: RepoMeta): Promise<GrowthFile> {
-  const stars = countByDate(await listStargazerTimestamps(client, repo.fullName));
+  const stars = countStarHistory(await listStarHistory(client, repo.fullName));
   const forks = countByDate(await listForkTimestamps(client, repo.fullName));
   return { schemaVersion: 1, repositoryId: repo.id, stars, forks };
 }

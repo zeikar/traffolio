@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import type { ReleaseItem } from "../../src/collector/extras-api.js";
 import {
   countByDate,
+  countStarHistory,
   isCountedAsset,
   sortPaths,
   sortReferrers,
@@ -19,6 +20,39 @@ describe("countByDate", () => {
       ]),
     ).toEqual({ "2026-10-01": 2, "2026-10-02": 2 });
     expect(countByDate([])).toEqual({});
+  });
+});
+
+describe("countStarHistory", () => {
+  const SUN_OCT_25 = 1792886400; // 2026-10-25T00:00:00Z
+  const SUN_OCT_18 = SUN_OCT_25 - 7 * 86_400;
+
+  it("dates day i as the week's UTC date plus i days and omits days without stars", () => {
+    expect(countStarHistory([{ week: SUN_OCT_25, days: [1, 0, 3, 1, 0, 0, 2] }])).toEqual({
+      "2026-10-25": 1,
+      "2026-10-27": 3,
+      "2026-10-28": 1,
+      "2026-10-31": 2,
+    });
+  });
+
+  it("concatenates weeks from several pages, crossing a month boundary", () => {
+    const SUN_SEP_27 = SUN_OCT_25 - 4 * 7 * 86_400;
+    const page1 = [
+      { week: SUN_OCT_25, days: [0, 0, 0, 0, 0, 0, 1] },
+      { week: SUN_OCT_18, days: [0, 0, 0, 0, 0, 0, 0] },
+    ];
+    const page2 = [{ week: SUN_SEP_27, days: [2, 0, 0, 0, 1, 0, 0] }];
+    expect(countStarHistory([...page1, ...page2])).toEqual({
+      "2026-09-27": 2,
+      "2026-10-01": 1,
+      "2026-10-31": 1,
+    });
+  });
+
+  it("returns nothing for empty or all-zero history", () => {
+    expect(countStarHistory([])).toEqual({});
+    expect(countStarHistory([{ week: SUN_OCT_25, days: [0, 0, 0, 0, 0, 0, 0] }])).toEqual({});
   });
 });
 

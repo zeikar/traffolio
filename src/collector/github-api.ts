@@ -85,10 +85,9 @@ export async function fetchAllPages<T>(
   path: string,
   query: Record<string, string | number>,
   item: z.ZodType<T>,
-  options?: { accept?: string },
 ): Promise<T[]> {
   const items: T[] = [];
-  let res = await client.get(path, query, options);
+  let res = await client.get(path, query);
   const seen = new Set<string>();
   for (let page = 1; ; page++) {
     items.push(...parseBody(z.array(item), res.body, path));
@@ -97,7 +96,7 @@ export async function fetchAllPages<T>(
     if (seen.has(next)) throw new PageLimitError(path, "loop");
     seen.add(next);
     if (page >= MAX_PAGES) throw new PageLimitError(path);
-    res = await client.get(next, undefined, options);
+    res = await client.get(next);
   }
 }
 

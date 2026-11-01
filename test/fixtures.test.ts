@@ -80,7 +80,7 @@ describe('demo store', () => {
 describe('fixture hygiene', () => {
   it('contains no timestamps except API timestamp fields', () => {
     for (const file of walk(root).filter((p) => p.endsWith('.json'))) {
-      const text = readFileSync(file, 'utf8').replace(/"(timestamp|starred_at|created_at|published_at)": "[^"]*"/g, '');
+      const text = readFileSync(file, 'utf8').replace(/"(timestamp|created_at|published_at)": "[^"]*"/g, '');
       expect(text, file).not.toMatch(/T\d\d:\d\d/);
     }
   });

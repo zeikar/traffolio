@@ -17,8 +17,9 @@ const DAY1 = Date.parse("2026-10-27T03:37:12Z");
 const DAY2 = Date.parse("2026-10-28T03:37:12Z");
 const SELF_PATH = "/repos/octo-sample/traffolio";
 const REPOS_PAGE2 = "https://api.github.com/user/repos?affiliation=owner&per_page=100&page=2";
-const STARS_PAGE2 = "https://api.github.com/repositories/100001/stargazers?per_page=100&page=2";
-const EXTRA_PATH = /\/(stargazers|forks|releases|traffic\/popular\/(referrers|paths))$/;
+const HISTORY_PAGE2 = "https://api.github.com/repositories/100001/stargazers/history?per_page=30&page=2";
+const HISTORY = "stargazers/history";
+const EXTRA_PATH = /\/(stargazers\/history|forks|releases|traffic\/popular\/(referrers|paths))$/;
 
 const CONFIG = `repositories:
   include: ["*"]
@@ -45,7 +46,7 @@ const status =
   () =>
     json({ message }, code, headers);
 
-/** sample-cli has stargazers (two pages), forks and releases; the other repositories have none. */
+/** sample-cli has star history (two pages), forks and releases; the other repositories have none. */
 function defaultRoute(url: URL): Response {
   const path = url.pathname;
   if (path === SELF_PATH) return json(fixtureText("self-repo-private"));
@@ -55,10 +56,10 @@ function defaultRoute(url: URL): Response {
       ? json(fixtureText("user-repos-page-2"))
       : json(fixtureText("user-repos-page-1"), 200, { link: `<${REPOS_PAGE2}>; rel="next"` });
   }
-  if (path === repoPath("sample-cli", "stargazers")) {
-    return json(fixtureText("stargazers-page-1"), 200, { link: `<${STARS_PAGE2}>; rel="next"` });
+  if (path === repoPath("sample-cli", HISTORY)) {
+    return json(fixtureText("star-history-page-1"), 200, { link: `<${HISTORY_PAGE2}>; rel="next"` });
   }
-  if (path === "/repositories/100001/stargazers") return json(fixtureText("stargazers-page-2"));
+  if (path === "/repositories/100001/stargazers/history") return json(fixtureText("star-history-page-2"));
   if (path === repoPath("sample-cli", "forks")) return json(fixtureText("forks"));
   if (path === repoPath("sample-cli", "releases")) return json(fixtureText("releases"));
   const m = /^\/repos\/octo-sample\/[^/]+\/(.+)$/.exec(path);
@@ -66,7 +67,7 @@ function defaultRoute(url: URL): Response {
   if (m?.[1] === "traffic/clones") return json(fixtureText("traffic-clones"));
   if (m?.[1] === "traffic/popular/referrers") return json(fixtureText("traffic-referrers"));
   if (m?.[1] === "traffic/popular/paths") return json(fixtureText("traffic-paths"));
-  if (m && ["stargazers", "forks", "releases"].includes(m[1]!)) return json([]);
+  if (m && [HISTORY, "forks", "releases"].includes(m[1]!)) return json([]);
   return json({ message: "Not Found" }, 404);
 }
 
@@ -88,7 +89,6 @@ afterEach(async () => {
 interface Run {
   result: CollectResult;
   requested: string[];
-  accept: (path: string) => (string | null)[];
   sleeps: number[];
   lines: string[];
   summary: string;
@@ -120,14 +120,9 @@ async function run(options: { routes?: Routes; now?: number } = {}): Promise<Run
     now: () => options.now ?? DAY1,
     log: (line) => lines.push(line),
   });
-  const calls = fetch.mock.calls.map(([input, init]) => ({
-    path: new URL(String(input)).pathname,
-    accept: new Headers(init?.headers).get("accept"),
-  }));
   return {
     result,
-    requested: calls.map((c) => c.path),
-    accept: (path) => calls.filter((c) => c.path === path).map((c) => c.accept),
+    requested: fetch.mock.calls.map(([input]) => new URL(String(input)).pathname),
     sleeps,
     lines,
     summary: await readFile(summaryFile, "utf8"),
@@ -181,7 +176,11 @@ describe("extras happy path", () => {
     const growth = await readJson<GrowthFile>("data/growth/100001.json");
     expect(Object.values(growth.stars).reduce((a, b) => a + b, 0)).toBe(42);
     expect(growth.forks).toEqual({ "2025-05-02": 1, "2025-11-19": 2, "2026-07-08": 1, "2026-10-21": 1 });
-    expect(growth.stars["2025-04-20"]).toBe(1); // 23:59:30Z stays on its UTC date
+    // Newest week (Sunday 2026-10-25) and oldest (Sunday 2026-01-25); zero days are omitted.
+    expect(growth.stars["2026-10-25"]).toBe(1);
+    expect(growth.stars["2026-10-27"]).toBe(2);
+    expect(growth.stars["2026-10-26"]).toBeUndefined();
+    expect(growth.stars["2026-01-28"]).toBe(6);
     expect(await readJson<GrowthFile>("data/growth/100002.json")).toEqual({
       schemaVersion: 1,
       repositoryId: 100002,
@@ -227,11 +226,10 @@ describe("extras happy path", () => {
     expect(await snapshot()).toEqual(before);
   });
 
-  it("requests stargazers with the star media type, extras only for selected repos, after traffic", async () => {
+  it("pages through star history, requests extras only for selected repos, after traffic", async () => {
     const r = await run();
-    expect(r.accept(repoPath("sample-cli", "stargazers"))).toEqual(["application/vnd.github.star+json"]);
-    expect(r.accept("/repositories/100001/stargazers")).toEqual(["application/vnd.github.star+json"]);
-    expect(r.accept(repoPath("sample-cli", "forks"))).toEqual(["application/vnd.github+json"]);
+    expect(r.requested).toContain("/repositories/100001/stargazers/history");
+    expect(r.requested.some((p) => p.endsWith("/stargazers"))).toBe(false);
 
     const extraRequests = r.requested.filter((p) => EXTRA_PATH.test(p) && p.startsWith("/repos/"));
     expect([...new Set(extraRequests.map((p) => p.split("/")[3]))]).toEqual(["sample-cli", "sample-web", "Sample-Docs"]);
@@ -246,22 +244,23 @@ describe("extras happy path", () => {
     );
   });
 
-  it("refetches star and fork lists even when the stored totals match the repository listing", async () => {
+  it("refetches star history and forks even when the stored totals match the repository listing", async () => {
     await seed();
     const r = await run();
-    expect(r.requested).toContain(repoPath("sample-cli", "stargazers"));
+    expect(r.requested).toContain(repoPath("sample-cli", HISTORY));
     expect(r.requested).toContain(repoPath("sample-cli", "forks"));
   });
 
   it("picks up an unstar plus a new star that leave the total unchanged", async () => {
     await seed();
     const before = await readJson<GrowthFile>("data/growth/100001.json");
-    const stars = JSON.parse(fixtureText("stargazers-page-1")) as { starred_at: string }[];
-    stars[0]!.starred_at = "2026-10-26T10:00:00Z";
+    const weeks = JSON.parse(fixtureText("star-history-page-1")) as { week: number; total: number; days: number[] }[];
+    // The Sunday star of the newest week moved to Monday 2026-10-26.
+    weeks[0]!.days = [0, 1, 2, 0, 0, 0, 1];
     await run({
       routes: {
-        [repoPath("sample-cli", "stargazers")]: (url) =>
-          json(JSON.stringify(stars), 200, { link: `<${STARS_PAGE2}>; rel="next"` }),
+        [repoPath("sample-cli", HISTORY)]: () =>
+          json(JSON.stringify(weeks), 200, { link: `<${HISTORY_PAGE2}>; rel="next"` }),
       },
     });
     const after = await readJson<GrowthFile>("data/growth/100001.json");
@@ -339,25 +338,41 @@ describe("extras failures", () => {
     expect(r.summary).toContain("releases 0 with assets; 0 forbidden, 1 failed");
   });
 
-  it("401 on stargazers -> fatal, nothing written", async () => {
+  it("403 on star history -> warning, exit 0, previous growth file kept", async () => {
+    const before = await seed();
+    const r = await run({
+      now: DAY2,
+      routes: { [repoPath("sample-cli", HISTORY)]: status(403, {}, "Resource not accessible by personal access token") },
+    });
+    expect(r.result).toMatchObject({ exitCode: 0, outcome: "ok" });
+    expect(r.sleeps).toEqual([]);
+    expect((await snapshot())["data/growth/100001.json"]).toBe(before["data/growth/100001.json"]);
+    expect(r.lines).toContain("octo-sample/sample-cli: stars/forks forbidden");
+    expect(r.summary).toContain("stars/forks 2 ok");
+    expect(r.summary).toContain("1 forbidden, 0 failed");
+  });
+
+  it("401 on star history -> fatal, nothing written", async () => {
     const before = await snapshot();
-    const r = await run({ routes: { [repoPath("sample-cli", "stargazers")]: status(401, {}, "Bad credentials") } });
+    const r = await run({ routes: { [repoPath("sample-cli", HISTORY)]: status(401, {}, "Bad credentials") } });
     expect(r.result).toEqual({ exitCode: 1, outcome: "fatal", commit: false });
     expect(r.summary).toContain("- Reason: auth");
     expect(r.lines).toContain("octo-sample/sample-cli: stars/forks auth");
     expect(await snapshot()).toEqual(before);
   });
 
-  it("422 on stargazers -> partial exit 2, previous growth file kept, body not logged", async () => {
+  it.each<[string, Handler, number[]]>([
+    ["500 after retries", status(500, {}, "BODY_TEXT server error"), [500, 1000]],
+    ["422 (page past the limit)", status(422, {}, "BODY_TEXT pagination is limited"), []],
+  ])("%s on star history -> partial exit 2, previous growth file kept, body not logged", async (_label, handler, sleeps) => {
     const before = await seed();
-    const r = await run({
-      now: DAY2,
-      routes: { [repoPath("sample-cli", "stargazers")]: status(422, {}, "In order to keep the API fast, pagination is limited") },
-    });
+    const r = await run({ now: DAY2, routes: { [repoPath("sample-cli", HISTORY)]: handler } });
     expect(r.result).toMatchObject({ exitCode: 2, outcome: "partial" });
+    expect(r.sleeps).toEqual(sleeps);
     expect((await snapshot())["data/growth/100001.json"]).toBe(before["data/growth/100001.json"]);
-    expect(r.summary).toContain("1 failed");
-    expect(r.lines.join("\n")).not.toContain("pagination is limited");
+    expect(r.summary).toContain("stars/forks 2 ok");
+    expect(r.summary).toContain("0 forbidden, 1 failed");
+    expect(r.lines.join("\n")).not.toContain("BODY_TEXT");
   });
 
   it("rate limit given up during extras -> stop all requests, keep what was gathered, exit 2", async () => {
