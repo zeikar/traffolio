@@ -77,7 +77,7 @@ For fine-grained tokens, GitHub's REST docs list **Administration: Read** as the
 
 Star history and fork lists are fetched in full on every run (one request per 30 weeks of the repository's age, and per 100 forks), because an unchanged count does not prove the dates are unchanged: an unstar plus a new star leaves the total the same.
 
-The default `GITHUB_TOKEN` cannot read other repositories' traffic, so it cannot replace the PAT. The workflow only needs `contents: write` for the commit. Notes on the API versions and behavior are in [docs/github-api-notes.md](docs/github-api-notes.md).
+The default `GITHUB_TOKEN` cannot read other repositories' traffic, so it cannot replace the PAT. The workflow only needs `contents: write` for the commit; with `pages: true` in public mode, its `deploy-pages` job also uses `GITHUB_TOKEN` with `pages: write` and `id-token: write` to publish the dashboard. Notes on the API versions and behavior are in [docs/github-api-notes.md](docs/github-api-notes.md).
 
 ## Local dashboard
 
@@ -91,7 +91,7 @@ npm run dashboard   # writes dashboard.html and prints its file:// URL
 
 It also shows star history (cumulative stars and new stars per period), the latest top referrers and pages, and release downloads per release with a daily-downloads chart; `#repo=<repo_id>` at the end of the file URL opens one repository directly.
 
-It is a single HTML file with no external resources, so the data never leaves your machine. GitHub Pages is not an option for this: on a personal account a Pages site is always public, even from a private repository. `dashboard.html` is git-ignored because it contains your traffic data; don't commit or publish it.
+It is a single HTML file with no external resources, so the data never leaves your machine. Don't publish it with GitHub Pages from a private Traffolio repository: on a personal account a Pages site is always public, even from a private repository. A public-mode repository can publish the same dashboard; see [GitHub Pages dashboard](#github-pages-dashboard). `dashboard.html` is git-ignored because it contains your traffic data; don't commit or publish it.
 
 ### Run a collection locally
 
@@ -120,7 +120,7 @@ What failures look like in Actions:
 | Missing `TRAFFIC_TOKEN`, 401, `GET /user` fails | Nothing written | Failed (exit 1) |
 | Traffolio repo is public without `public_mode: true`, or visibility cannot be determined | Nothing written | Failed (exit 1) |
 | `public_mode: true` in a public repo with `include_private: true` | Nothing written | Failed (exit 1) |
-| `public_mode: true` in a public repo whose `data/index.json` lists a private repository, or is unreadable | Nothing written | Failed (exit 1) |
+| `public_mode: true` in a public repo whose `data/index.json` lists a private repository, or is unreadable | Nothing written; nothing deployed to GitHub Pages | Failed (exit 1) |
 | All selected repositories failed | Nothing written | Failed (exit 1) |
 | Some repositories hit transient errors (5xx, network, rate limit) after retries | Successes are committed | Failed (exit 2) |
 | A repository returns 403/404 (no permission or traffic not available) | Status recorded, no numbers written | Succeeds with a warning; shown as `—` |
@@ -142,6 +142,21 @@ A failed run sends GitHub's normal notification, so a broken token does not go u
 - Logs, the Summary and outputs name only the selected repositories; other repositories appear only in the discovered/selected counts.
 - **Use a separate fine-grained token** for the public repository's `TRAFFIC_TOKEN`, limited to the repositories you publish (Repository access: **Only select repositories**), so it cannot read traffic of anything else.
 - In a private repository `public_mode` has no effect; the run logs a notice and collects as usual.
+
+#### GitHub Pages dashboard
+
+With `pages: true` as well, each run also publishes the [local dashboard](#local-dashboard) to GitHub Pages, at `https://<user>.github.io/<repository>/`. The page is built from the `data/` the run has just committed, so it shows nothing the repository doesn't already publish, and it names no local path.
+
+1. Set `pages: true` in `traffolio.config.yml`, next to `public_mode: true`.
+2. In the repository's Settings → Pages, set **Build and deployment → Source** to **GitHub Actions**. Until then the `deploy-pages` job fails; a workflow can't turn Pages on by itself.
+3. Run **Traffolio Collect**. The `deploy-pages` job's summary links the page.
+
+What gets published, and when:
+
+- Only from a public repository in public mode. A private repository with `pages: true` logs a notice and publishes nothing (a Pages site on a personal account is always public), and the template repository publishes nothing.
+- Never when `data/index.json` lists a private repository: the run stops before anything is collected, and the page build refuses that data too.
+- A partial run (exit 2) still publishes: the data it committed is already public. A run whose commit or push failed publishes nothing.
+- A run that changed no data still redeploys, so a Traffolio update to the dashboard reaches the page.
 
 ## Data
 
@@ -184,7 +199,7 @@ Per-month file shape:
 
 ## Configuration
 
-`traffolio.config.yml` has a `repositories` section and a top-level `public_mode` switch. Unknown keys and wrong types are rejected with an error, and a missing key uses its default.
+`traffolio.config.yml` has a `repositories` section and top-level `public_mode` and `pages` switches. Unknown keys and wrong types are rejected with an error, and a missing key uses its default.
 
 | Key | Default | Meaning |
 |---|---|---|
@@ -195,6 +210,7 @@ Per-month file shape:
 | `include_archived` | `false` | Also collect archived repositories |
 | `include_self` | `false` | Also collect the Traffolio repository itself. Still requires `include_private: true`, since Traffolio is private (except in public mode) |
 | `public_mode` (top level) | `false` | Allow a public Traffolio repository to collect and publish the selected repositories' numbers; see [Public mode](#public-mode). Cannot be combined with `include_private: true` |
+| `pages` (top level) | `false` | Publish the dashboard to GitHub Pages on each run. Only takes effect in a public repository with `public_mode: true`; see [GitHub Pages dashboard](#github-pages-dashboard) |
 
 Matching rules:
 
