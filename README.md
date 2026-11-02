@@ -7,7 +7,7 @@ GitHub's Traffic API only returns the last 14 days of views and clones. Traffoli
 
 ![Traffolio's local dashboard with sample data: views and clones over 30 days, summary cards and star history](docs/dashboard.png)
 
-*The [local dashboard](#local-dashboard), shown with sample data. The README section below is the live one.*
+*The [local dashboard](#local-dashboard), shown with sample data. The same dashboard is [live for the demo instance](https://zeikar.dev/traffolio-demo/), published with [GitHub Pages](#github-pages-dashboard); the README section below is live too.*
 
 > **No server. No database. Just GitHub.** means there is nothing for you to host or operate. It does not mean GitHub infrastructure is unused: Actions runs the collector, Git stores the data, and the README displays it.
 
