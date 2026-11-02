@@ -19,3 +19,8 @@ repositories:
 # Actions logs are public too). Private repositories can't be selected then (include_private
 # must stay false). Has no effect in a private repository. See README › Security.
 public_mode: false
+
+# Only takes effect together with public_mode: true in a public repository: each run then
+# publishes the dashboard to GitHub Pages, which is always public. Set the repository's
+# Pages source to "GitHub Actions" first. See README › Public mode.
+pages: false
