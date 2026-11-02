@@ -1,5 +1,5 @@
 import { createHash } from "node:crypto";
-import { cp, mkdtemp, readFile, rm } from "node:fs/promises";
+import { access, cp, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { pathToFileURL } from "node:url";
@@ -207,6 +207,32 @@ describe("runDashboard", () => {
     await cp(demoRoot, tmp, { recursive: true });
     expect(await runDashboard([], io(tmp))).toBe(0);
     expect(await readFile(join(tmp, "dashboard.html"), "utf8")).toContain("octo-sample/sample-cli");
+  });
+
+  it("--public writes a page without the local path", async () => {
+    const out = join(tmp, "pages", "index.html");
+    expect(await runDashboard(["--public", "--data", demoRoot, "--out", out], io(tmp))).toBe(0);
+    const html = await readFile(out, "utf8");
+    expect(html).toContain("octo-sample/sample-cli");
+    expect(html).not.toContain("Generated locally");
+    expect(html).not.toContain(demoRoot);
+  });
+
+  it("--public refuses data that lists a private repository, without naming it", async () => {
+    const root = join(tmp, "data-root");
+    await cp(demoRoot, root, { recursive: true });
+    const indexPath = join(root, "data", "index.json");
+    const index = JSON.parse(await readFile(indexPath, "utf8")) as { repositories: Record<string, { private: boolean; fullName: string }> };
+    index.repositories["100002"]!.private = true;
+    await writeFile(indexPath, JSON.stringify(index));
+    const out = join(tmp, "pages", "index.html");
+
+    expect(await runDashboard(["--public", "--data", root, "--out", out], io(tmp))).toBe(1);
+    expect(errors.join("\n")).toContain("private repository");
+    expect(errors.join("\n")).not.toContain(index.repositories["100002"]!.fullName);
+    await expect(access(out)).rejects.toThrow();
+
+    expect(await runDashboard(["--data", root, "--out", out], io(tmp))).toBe(0);
   });
 
   it("exits 1 with a clear message when there is no data", async () => {
