@@ -9,6 +9,8 @@ export interface PublicModeViolation {
 
 export const PUBLIC_MODE_NO_EFFECT = "public_mode has no effect in a private repository.";
 
+export const PAGES_NO_EFFECT = "pages has no effect in a private repository; the dashboard is not published.";
+
 /** Whether stored data describes any private repository; such data must never be published. */
 export function listsPrivateRepository(index: IndexFile | undefined): boolean {
   return Object.values(index?.repositories ?? {}).some((entry) => entry.private === true);
