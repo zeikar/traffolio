@@ -84,6 +84,24 @@ describe("renderDashboardHtml", () => {
     expect(html).toContain(`<script>${CLIENT_SCRIPT}</script>`);
   });
 
+  it("leaves out the local path and the private-data note on a published page", () => {
+    const published = renderDashboardHtml({ ...demo, source: null });
+    for (const text of ["Generated locally", "don&rsquo;t commit or publish", "/somewhere/data", 'id="source"']) {
+      expect(published).not.toContain(text);
+    }
+    expect(published).toContain("Published by Traffolio in public mode");
+    const parsed = JSON.parse(embeddedJson(published)) as DashboardData;
+    expect(parsed.source).toBeNull();
+    expect(Object.keys(parsed.repos)).toEqual(Object.keys(toDashboardData(demo).repos));
+    expect(renderDashboardHtml({ ...demo, source: null })).toBe(published);
+
+    const sha = (text: string) => createHash("sha256").update(text, "utf8").digest("base64");
+    expect(published).toContain(`script-src 'sha256-${sha(CLIENT_SCRIPT)}'`);
+    expect(published).toContain(`<script>${CLIENT_SCRIPT}</script>`);
+
+    expect(renderDashboardHtml(demo)).toContain("Generated locally");
+  });
+
   it("client script avoids sequences that would end the script element", () => {
     expect(CLIENT_SCRIPT.toLowerCase()).not.toContain("</script");
     expect(CLIENT_SCRIPT).not.toContain("<!--");
