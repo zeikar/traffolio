@@ -24,13 +24,28 @@ describe("renderOutputs", () => {
       "assets/sparklines/100001.svg",
       "assets/sparklines/100003.svg",
       "assets/sparklines/100002.svg",
+      ...["100001", "100003", "100002"].flatMap((id) => [
+        `repos/${id}.md`,
+        `assets/repos/${id}/views.svg`,
+        `assets/repos/${id}/clones.svg`,
+        `assets/repos/${id}/stars.svg`,
+      ]),
     ]);
+  });
+
+  it("writes no stars chart for a repository without a growth file", async () => {
+    const input = await demoInput();
+    const store = { ...input.store, readGrowth: async () => undefined } as typeof input.store;
+    const { files } = await renderOutputs({ ...input, store });
+    expect(files.some(([path]) => path.endsWith("stars.svg"))).toBe(false);
+    expect(files.some(([path]) => path === "repos/100001.md")).toBe(true);
   });
 
   it("links the section to the same paths", async () => {
     const { section } = await renderOutputs(await demoInput());
     expect(section).toContain("](assets/sparklines/100001.svg)");
     expect(section).toContain("](assets/views.svg)");
+    expect(section).toContain("](repos/100001.md)");
   });
 
   it("is deterministic", async () => {

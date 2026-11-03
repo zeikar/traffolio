@@ -358,6 +358,12 @@ describe("partial failures", () => {
     expect(changedPaths(before, await snapshot())).toEqual([
       "README.md",
       "assets/clones.svg",
+      "assets/repos/100001/clones.svg",
+      "assets/repos/100001/views.svg",
+      "assets/repos/100002/clones.svg",
+      "assets/repos/100002/views.svg",
+      "assets/repos/100003/clones.svg",
+      "assets/repos/100003/views.svg",
       "assets/sparklines/100001.svg",
       "assets/sparklines/100002.svg",
       "assets/sparklines/100003.svg",
@@ -366,6 +372,9 @@ describe("partial failures", () => {
       "data/status.json",
       "data/traffic/100001/2026-10.json",
       "data/traffic/100003/2026-10.json",
+      "repos/100001.md",
+      "repos/100002.md",
+      "repos/100003.md",
     ]);
     const st = await readJson<StatusFile>("data/status.json");
     expect(st.repositories["100002"]).toEqual({ lastSuccessDate: null, lastError: { kind: "transient", date: RUN_DATE } });
@@ -464,9 +473,11 @@ describe("idempotence and upsert", () => {
     const monthPath = "data/traffic/100001/2026-10.json";
     expect(changedPaths(before, await snapshot())).toEqual([
       "README.md",
+      "assets/repos/100001/views.svg",
       "assets/sparklines/100001.svg",
       "assets/views.svg",
       monthPath,
+      "repos/100001.md",
     ]);
     const prev = JSON.parse(before[monthPath]!) as MonthFile;
     const next = await readJson<MonthFile>(monthPath);
@@ -488,7 +499,7 @@ describe("idempotence and upsert", () => {
     expect(r.result).toEqual({ exitCode: 0, outcome: "ok", commit: true, dataThroughDate: "2026-10-25" });
     expect(r.requested).toContain(trafficPath("cli-tool", "views"));
 
-    expect(changedPaths(before, await snapshot())).toEqual(["README.md", "data/index.json"]);
+    expect(changedPaths(before, await snapshot())).toEqual(["README.md", "data/index.json", "repos/100001.md"]);
     expect(await trafficDirs()).toEqual(SELECTED_IDS);
     const index = await readJson<IndexFile>("data/index.json");
     expect(index.repositories["100001"]).toMatchObject({
@@ -513,6 +524,8 @@ describe("idempotence and upsert", () => {
       expect(text).not.toContain("100007");
     }
     expect((await readdir(join(root, "assets/sparklines"))).sort()).toEqual(SELECTED_IDS.map((id) => `${id}.svg`));
+    expect((await readdir(join(root, "repos"))).sort()).toEqual(SELECTED_IDS.map((id) => `${id}.md`));
+    for (const id of SELECTED_IDS) expect(await readText(`repos/${id}.md`)).not.toContain("secret-notes");
   });
 });
 
@@ -605,12 +618,21 @@ describe("no traffic window", () => {
     expect(changedPaths(before, await snapshot())).toEqual([
       "README.md",
       "assets/clones.svg",
+      "assets/repos/100001/clones.svg",
+      "assets/repos/100001/views.svg",
+      "assets/repos/100002/clones.svg",
+      "assets/repos/100002/views.svg",
+      "assets/repos/100003/clones.svg",
+      "assets/repos/100003/views.svg",
       "assets/sparklines/100001.svg",
       "assets/sparklines/100002.svg",
       "assets/sparklines/100003.svg",
       "assets/views.svg",
       "data/index.json",
       "data/status.json",
+      "repos/100001.md",
+      "repos/100002.md",
+      "repos/100003.md",
     ]);
     const st = await readJson<StatusFile>("data/status.json");
     expect(st.dataThroughDate).toBeNull();

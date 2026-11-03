@@ -32,12 +32,20 @@ const opts = {
   viewsSvgPath: "./views.svg",
   clonesSvgPath: "./clones.svg",
   sparklinePath: (id: string) => `./sparklines/${id}.svg`,
+  repoPagePath: (id: string) => `repos/${id}.md`,
   sampleLabel: false,
 };
 const rowLine = (s: string, name: string) =>
   s.split("\n").find((l) => l.includes(`/${name}]`))!;
 
 describe("renderSection", () => {
+  it("links the repository cell to its page, then to GitHub", () => {
+    const line = rowLine(renderSection(model, opts), "sample-cli");
+    expect(line.split("|")[1]!.trim()).toBe(
+      "[octo-sample/sample-cli](repos/100001.md) · [GitHub](https://github.com/octo-sample/sample-cli)",
+    );
+  });
+
   it("has the data-through heading, totals, failed line, image and notes", () => {
     const s = renderSection(model, opts);
     expect(s).toContain(`Data through ${model.dataThroughDate} (UTC)`);

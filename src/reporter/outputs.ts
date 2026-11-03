@@ -1,11 +1,13 @@
 import type { ExtrasFiles } from "../collect-extras.js";
 import type { Store } from "../storage/store.js";
 import type { IndexFile, MonthFile, StatusFile } from "../types.js";
-import { buildDashboardModel } from "./aggregate.js";
+import { buildDashboardModel, daysFromMonthFiles } from "./aggregate.js";
 import { renderSection } from "./readme.js";
+import { buildRepoPageModel, loadRepoExtras } from "./repo-model.js";
+import { renderRepoPage } from "./repo-page.js";
 import { readTopReferrers } from "./referrers.js";
 import { renderSparklineSvg } from "./sparkline.js";
-import { clonesChart, viewsChart } from "./svg.js";
+import { clonesChart, repoClonesChart, repoStarsChart, repoViewsChart, viewsChart } from "./svg.js";
 
 export interface OutputsInput {
   store: Store;
@@ -36,11 +38,39 @@ export async function renderOutputs(input: OutputsInput): Promise<Outputs> {
   const viewsSvgPath = "assets/views.svg";
   const clonesSvgPath = "assets/clones.svg";
 
-  const section = renderSection(model, { viewsSvgPath, clonesSvgPath, sparklinePath, sampleLabel, topReferrers });
+  const repoPagePath = (id: string): string => `repos/${id}.md`;
+  const repoImagePath = (id: string, name: string): string => `assets/repos/${id}/${name}.svg`;
+
+  const section = renderSection(model, {
+    viewsSvgPath,
+    clonesSvgPath,
+    sparklinePath,
+    repoPagePath,
+    sampleLabel,
+    topReferrers,
+  });
   const files: [string, string][] = [
     [viewsSvgPath, viewsChart(model.series, sampleLabel)],
     [clonesSvgPath, clonesChart(model.series, sampleLabel)],
     ...model.rows.map((row): [string, string] => [sparklinePath(row.id), renderSparklineSvg(row.series)]),
   ];
+  for (const row of model.rows) {
+    const extras = await loadRepoExtras(store, row.id, computed);
+    const page = buildRepoPageModel(
+      row,
+      daysFromMonthFiles(monthFilesByRepo[row.id] ?? []),
+      model.dataThroughDate,
+      extras,
+    );
+    files.push(
+      [
+        repoPagePath(row.id),
+        renderRepoPage(page, { imagePath: (name) => `../${repoImagePath(row.id, name)}`, sampleLabel }),
+      ],
+      [repoImagePath(row.id, "views"), repoViewsChart(page.series, sampleLabel)],
+      [repoImagePath(row.id, "clones"), repoClonesChart(page.series, sampleLabel)],
+    );
+    if (page.growth) files.push([repoImagePath(row.id, "stars"), repoStarsChart(page.growth.stars, sampleLabel)]);
+  }
   return { section, files };
 }

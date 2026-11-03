@@ -16,6 +16,8 @@ export interface RenderOptions {
   clonesSvgPath: string;
   /** Image path of a row's trend sparkline, by repo id. */
   sparklinePath: (id: string) => string;
+  /** Link target of a row's repository page, by repo id. */
+  repoPagePath: (id: string) => string;
   sampleLabel: boolean;
   /** Omitted or null: no referrer table. */
   topReferrers?: TopReferrers | null;
@@ -46,19 +48,19 @@ export function replaceSection(readme: string, section: string): string {
 }
 
 /** `—` = no stored days at all (not zero); `*` = some days have no data, or lack some repositories. */
-function cell(value: number | null, p: PeriodSum): string {
+export function formatCell(value: number | null, p: PeriodSum): string {
   if (value === null) return DASH;
   return p.missingDays > 0 || p.partialDays > 0 ? `${value}*` : String(value);
 }
 
-const views = (p: PeriodSum): string => cell(p.views, p);
-const clones = (p: PeriodSum): string => cell(p.clones, p);
+const views = (p: PeriodSum): string => formatCell(p.views, p);
+const clones = (p: PeriodSum): string => formatCell(p.clones, p);
 
-function escapeCell(text: string): string {
+export function escapeCell(text: string): string {
   return text.replace(/[\\`*_{}[\]<>|]/g, "\\$&").replace(/\r?\n/g, " ");
 }
 
-function status(row: DashboardRow): string {
+export function statusLabel(row: Pick<DashboardRow, "tracking" | "lastError">): string {
   if (row.tracking === "tracked") {
     return row.lastError ? `${row.lastError.kind} since ${row.lastError.date}` : "ok";
   }
@@ -66,16 +68,20 @@ function status(row: DashboardRow): string {
   return `excluded (${row.tracking.slice("excluded:".length)})`;
 }
 
-function repoTable(rows: DashboardRow[], sparklinePath: (id: string) => string): string[] {
+function repoTable(
+  rows: DashboardRow[],
+  sparklinePath: (id: string) => string,
+  repoPagePath: (id: string) => string,
+): string[] {
   const lines = [
     "| Repository | Views trend (30d) | Visibility | Views 7d | Views 30d | Clones 7d | Clones 30d | Stars | Forks | Status |",
     "| --- | --- | --- | ---: | ---: | ---: | ---: | ---: | ---: | --- |",
   ];
   for (const r of rows) {
     lines.push(
-      `| [${escapeCell(r.fullName)}](https://github.com/${r.fullName}) | ![trend](${sparklinePath(r.id)}) | ${r.visibility} | ` +
+      `| [${escapeCell(r.fullName)}](${repoPagePath(r.id)}) · [GitHub](https://github.com/${r.fullName}) | ![trend](${sparklinePath(r.id)}) | ${r.visibility} | ` +
         `${views(r.d7)} | ${views(r.d30)} | ${clones(r.d7)} | ${clones(r.d30)} | ` +
-        `${r.stars} | ${r.forks} | ${escapeCell(status(r))} |`,
+        `${r.stars} | ${r.forks} | ${escapeCell(statusLabel(r))} |`,
     );
   }
   return lines;
@@ -125,7 +131,7 @@ export function renderSection(model: DashboardModel, opts: RenderOptions): strin
 
   const rows = model.rows;
   if (rows.length > 0) {
-    out.push(...repoTable(rows, opts.sparklinePath), "");
+    out.push(...repoTable(rows, opts.sparklinePath, opts.repoPagePath), "");
     needsFootnote ||= rows.some((r) =>
       [r.d7, r.d30].some((p) => (p.missingDays > 0 || p.partialDays > 0) && p.presentDays > 0),
     );
