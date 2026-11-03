@@ -2,9 +2,18 @@ import { fileURLToPath } from "node:url";
 import { beforeAll, describe, expect, it } from "vitest";
 import {
   buildDashboardModel,
+  type RepoSeriesPoint,
   type SeriesPoint,
 } from "../../src/reporter/aggregate.js";
-import { clonesChart, renderChartSvg, viewsChart, type ChartSpec } from "../../src/reporter/svg.js";
+import {
+  clonesChart,
+  renderChartSvg,
+  repoClonesChart,
+  repoStarsChart,
+  repoViewsChart,
+  viewsChart,
+  type ChartSpec,
+} from "../../src/reporter/svg.js";
 import { createStore } from "../../src/storage/store.js";
 import type { MonthFile } from "../../src/types.js";
 
@@ -171,5 +180,56 @@ describe("renderChartSvg", () => {
     });
     expect(svg).toContain("Nothing");
     expect(svg).not.toContain("<path");
+  });
+});
+
+describe("per-repository charts", () => {
+  const dates = Array.from({ length: 90 }, (_, i) => new Date(Date.UTC(2026, 7, 7 + i)).toISOString().slice(0, 10));
+  const points: RepoSeriesPoint[] = dates.map((date, i) => ({
+    date,
+    views: i % 10 === 3 ? null : i,
+    uniqueViews: i % 10 === 3 ? null : Math.ceil(i / 2),
+    clones: i % 10 === 3 ? null : i * 2,
+    uniqueCloners: i % 10 === 3 ? null : i,
+  }));
+
+  it("draw the metric and a dashed unique line, without partial markers", () => {
+    for (const [svg, main, unique] of [
+      [repoViewsChart(points, false), "views", "uniqueViews"],
+      [repoClonesChart(points, false), "clones", "uniqueCloners"],
+    ] as const) {
+      expect(count(svg, /<path class="line /g)).toBe(2);
+      expect(pathData(svg, main)).toBeTruthy();
+      expect(svg).toMatch(new RegExp(`<path class="line ${unique}"[^>]*stroke-dasharray`));
+      expect(svg).not.toMatch(new RegExp(`<path class="line ${main}"[^>]*stroke-dasharray`));
+      expect(count(svg, /<circle class="partial"/g)).toBe(0);
+      expect(svg).not.toContain(PARTIAL_TEXT);
+      expect(svg).toContain("Data through 2026-11-04 (UTC)");
+    }
+  });
+
+  it("titles the 90-day window", () => {
+    expect(repoViewsChart(points, false)).toContain("Daily views · last 90 days");
+    expect(repoClonesChart(points, false)).toContain("Daily clones · last 90 days");
+  });
+
+  it("draws stars as one line", () => {
+    const svg = repoStarsChart(dates.map((date, i) => ({ date, total: i })), false);
+    expect(count(svg, /<path class="line /g)).toBe(1);
+    expect(svg).toContain("Stars · last 90 days");
+  });
+
+  it("show the placeholder when nothing is stored", () => {
+    const blank = points.map((p) => ({ ...p, views: null, uniqueViews: null, clones: null, uniqueCloners: null }));
+    expect(repoViewsChart(blank, false)).toContain("No traffic data stored yet");
+    expect(repoViewsChart(blank, false)).not.toContain("<path");
+    expect(repoClonesChart([], false)).toContain("No traffic data stored yet");
+    expect(repoStarsChart([], false)).toContain("No star history stored");
+  });
+
+  it("are byte-stable and drop the sample banner unless asked", () => {
+    expect(repoViewsChart(points, true)).toBe(repoViewsChart(points, true));
+    expect(repoViewsChart(points, true)).toContain("SAMPLE DATA");
+    expect(repoViewsChart(points, false)).not.toContain("SAMPLE DATA");
   });
 });

@@ -1,4 +1,4 @@
-import type { SeriesPoint } from "./aggregate.js";
+import type { RepoSeriesPoint, SeriesPoint } from "./aggregate.js";
 
 export interface ChartLine {
   /** CSS class suffix: the path gets `class="line <key>"`. */
@@ -267,4 +267,64 @@ export function viewsChart(series: SeriesPoint[], sampleLabel: boolean): string 
 
 export function clonesChart(series: SeriesPoint[], sampleLabel: boolean): string {
   return readmeChart(series, METRICS[1], "Daily clones · last 30 days", sampleLabel);
+}
+
+const REPO_FOOTER_EMPTY = "Dates in UTC";
+
+type Style = { label: string; color: string };
+
+function repoChart(
+  points: RepoSeriesPoint[],
+  title: string,
+  [main, unique]: [Style & { key: "views" | "clones" }, Style & { key: "uniqueViews" | "uniqueCloners" }],
+  sampleLabel: boolean,
+): string {
+  const lastDate = points[points.length - 1]?.date;
+  return renderChartSvg({
+    title,
+    dates: points.map((p) => p.date),
+    lines: [
+      { ...main, values: points.map((p) => p[main.key]) },
+      { ...unique, values: points.map((p) => p[unique.key]), dashed: true },
+    ],
+    footer: lastDate === undefined ? REPO_FOOTER_EMPTY : `Data through ${lastDate} (UTC)`,
+    emptyText: "No traffic data stored yet",
+    sampleLabel,
+  });
+}
+
+export function repoViewsChart(points: RepoSeriesPoint[], sampleLabel: boolean): string {
+  return repoChart(
+    points,
+    "Daily views · last 90 days",
+    [
+      { key: "views", label: "Views", color: "#0969da" },
+      { key: "uniqueViews", label: "Unique visitors", color: "#54aeff" },
+    ],
+    sampleLabel,
+  );
+}
+
+export function repoClonesChart(points: RepoSeriesPoint[], sampleLabel: boolean): string {
+  return repoChart(
+    points,
+    "Daily clones · last 90 days",
+    [
+      { key: "clones", label: "Clones", color: "#bc4c00" },
+      { key: "uniqueCloners", label: "Unique cloners", color: "#fb8f44" },
+    ],
+    sampleLabel,
+  );
+}
+
+export function repoStarsChart(stars: { date: string; total: number }[], sampleLabel: boolean): string {
+  const lastDate = stars[stars.length - 1]?.date;
+  return renderChartSvg({
+    title: "Stars · last 90 days",
+    dates: stars.map((s) => s.date),
+    lines: [{ key: "stars", label: "Stars", color: "#bf8700", values: stars.map((s) => s.total) }],
+    footer: lastDate === undefined ? REPO_FOOTER_EMPTY : `Data through ${lastDate} (UTC)`,
+    emptyText: "No star history stored",
+    sampleLabel,
+  });
 }
