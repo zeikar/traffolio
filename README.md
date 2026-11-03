@@ -5,7 +5,7 @@
 
 GitHub's Traffic API only returns the last 14 days of views and clones. Traffolio runs on GitHub Actions, collects views and clones for your repositories every day, and stores the history as JSON in your own **private** repository, with a dashboard rendered right here in this README.
 
-![Traffolio's local dashboard with sample data: views and clones over 30 days, summary cards and star history](docs/dashboard.png)
+![Traffolio's local dashboard with sample data: Views and Clones charts over 30 days, summary cards and star history](docs/dashboard.png)
 
 *The [local dashboard](#local-dashboard), shown with sample data. The same dashboard is [live for the demo instance](https://zeikar.dev/traffolio-demo/), published with [GitHub Pages](#github-pages-dashboard); the README section below is live too.*
 
@@ -16,7 +16,8 @@ GitHub's Traffic API only returns the last 14 days of views and clones. Traffoli
 
 Live example: daily traffic of [zeikar/traffolio](https://github.com/zeikar/traffolio), collected by Traffolio in public mode in [zeikar/traffolio-demo](https://github.com/zeikar/traffolio-demo).
 
-![Live traffic of zeikar/traffolio](https://raw.githubusercontent.com/zeikar/traffolio-demo/main/assets/traffic.svg)
+![Live views of zeikar/traffolio](https://raw.githubusercontent.com/zeikar/traffolio-demo/main/assets/views.svg)
+![Live clones of zeikar/traffolio](https://raw.githubusercontent.com/zeikar/traffolio-demo/main/assets/clones.svg)
 
 [See a full sample section (sample data)](docs/demo/README-section.md)
 <!-- TRAFFOLIO:END -->
@@ -39,7 +40,7 @@ It is not:
 2. It lists your owned repositories, applies the filters in `traffolio.config.yml`, and fetches the latest 14 days of daily views and clones for each one.
 3. The results are merged into JSON files under `data/`. Each day is overwritten (upserted) by repository ID and UTC date, so re-running never double-counts.
 4. For the same repositories it also records star and fork history, a snapshot of the top referrers and popular pages, and release download counts (see [Data](#data)). These extras run after the traffic and never change how the traffic part of the run is judged.
-5. The README dashboard (between the `TRAFFOLIO` markers), `assets/traffic.svg` and the per-repository trend images in `assets/sparklines/` are regenerated from that JSON. Only that marked block is rewritten; the rest of this README is yours.
+5. The README dashboard (between the `TRAFFOLIO` markers), `assets/views.svg`, `assets/clones.svg`, the trend images in `assets/sparklines/`, and one page per repository in `repos/<repo_id>.md` with its charts in `assets/repos/<repo_id>/` are regenerated from that JSON. Only that marked block is rewritten; the rest of this README is yours.
 6. If any file changed, the workflow commits it with `GITHUB_TOKEN`. If nothing changed, there is no commit.
 
 ## Setup
@@ -81,7 +82,7 @@ The default `GITHUB_TOKEN` cannot read other repositories' traffic, so it cannot
 
 ## Local dashboard
 
-The README shows a summary. For per-repository charts, period switching (7 / 30 / 90 days / all) and sorting, generate a local dashboard from a clone of your Traffolio repository:
+The README shows a summary. For a daily Views chart and a daily Clones chart (with unique visitors and cloners when one repository is selected), period switching (7 / 30 / 90 days / all) and sorting, generate a local dashboard from a clone of your Traffolio repository:
 
 ```sh
 git clone <your Traffolio repository> && cd <it>
@@ -100,7 +101,7 @@ The same collection the workflow runs can be run from your clone, for example wh
 ```sh
 npm run build
 TRAFFIC_TOKEN=<token> GITHUB_TOKEN=<token> GITHUB_REPOSITORY=<you>/<your Traffolio repo> node dist/cli/collect.js
-git add -A -- data assets README.md && git commit -m "chore(data): update traffic (local run)" && git push
+git add -A -- data assets repos README.md && git commit -m "chore(data): update traffic (local run)" && git push
 ```
 
 `GITHUB_TOKEN` here only needs to read your Traffolio repository's metadata (the fail-closed visibility check); your fine-grained `TRAFFIC_TOKEN` works if it covers that repository. Run it at least every 14 days to avoid gaps.
@@ -170,8 +171,10 @@ data/
   growth/<repo_id>.json      stars and forks per date
   referrers/<repo_id>/YYYY-MM.json   top referrers and pages, one snapshot per run date
   releases/<repo_id>.json    cumulative release downloads per run date (only repos with release assets)
-assets/traffic.svg           generated README chart
-assets/sparklines/<repo_id>.svg   30-day trend shown in the README table
+assets/views.svg, clones.svg generated README charts
+assets/sparklines/<repo_id>.svg   30-day views trend shown in the README table
+assets/repos/<repo_id>/views.svg, clones.svg, stars.svg   90-day charts of the repository page
+repos/<repo_id>.md           per-repository page (totals, charts, referrers, releases)
 ```
 
 Per-month file shape:
@@ -190,7 +193,7 @@ Per-month file shape:
 - **Present, missing, not tracked yet.** A date key in `days` means it was collected, even when every value is `0`. A repository's tracking starts at its earliest stored date. After that, a date without a key is missing: it was never collected (failed run, no permission, or a gap longer than 14 days). Before it, the date is not tracked yet: windows start no earlier than the first stored date, so a 30-day window over a repository first collected 14 days ago covers those 14 days, with no `*`. A tracked repository with no stored days at all (its first collection failed) shows `—` and marks every tracked date of the totals as partial. Missing days are never summed as zero or interpolated; the dashboard shows them as `—`.
 - **Data-through date, not run date.** The Traffic API lags by one to two days, and its 14-day window ends on different days for different repositories. "Data through" is the last date that every repository collected in the latest run has data for, so the newest day shown is complete; a later day from a faster repository is stored and appears on a following run.
 - **UTC only.** All dates and periods are UTC. There is no timezone setting.
-- **Events, not people.** Totals are event counts summed across the tracked repositories. Daily unique counts are stored but are not added across days or repositories, so there is no "monthly unique visitors". CI checkouts of your repositories can count as clones.
+- **Events, not people.** Totals are event counts summed across the tracked repositories. Daily unique counts are stored but are not added across days or repositories, so there is no "monthly unique visitors". The repository pages and the dashboard show daily unique counts as separate lines but never sum them. CI checkouts of your repositories can count as clones.
 - **Star and fork counts in `index.json` are snapshots** taken at collection time. `growth/<repo_id>.json` holds the history: the number of stars and forks per UTC date, fetched in full each run. Stars come from GitHub's weekly star history (stars per day of each week); GitHub's day boundaries aren't UTC, so a star can be counted on an adjacent day, while weekly totals are reliable. Forks come from the fork list (`created_at`). A listing GitHub refuses to page through makes that extra fail and the run partial (exit 2), with the previous history kept. It is retroactive back to the repository's start, but covers only current stars and existing forks: removed stars and deleted forks are absent, so past totals can be slightly lower than they really were. Only dates are stored, never usernames.
 - **Referrer snapshots are 14-day aggregates.** GitHub reports only each repository's top 10 referrers and top 10 pages over the last 14 days. Each run stores that list under its run date in `referrers/<repo_id>/YYYY-MM.json` (an empty list is a valid snapshot). These are rolling 14-day totals as of each run date, not daily values, so don't add snapshots together. The README's top-referrer table sums the latest run date's snapshots across repositories (counts only: uniques cannot be added across repositories).
 - **Release downloads are cumulative.** `releases/<repo_id>.json` stores, per run date, each published release's total asset downloads so far; downloads on a day are the difference between consecutive snapshots. Drafts are ignored, prereleases count. Updater metadata, signatures and checksum files, matched by name (`latest.yml`, `latest-*.yml`, `latest.json`, `*.blockmap`, `*.sig`, `*.asc`, `*.minisig`, `*.sha256`, `checksums.txt`, `SHA256SUMS`, ...) are not counted, while other `.json`/`.yaml` assets are, and GitHub has no counts for source-code archives, so those, and downloads from npm or other registries, are not included. A repository gets this file once it has at least one counted asset; after that, every successful run appends a snapshot, even when all counted assets were later deleted. Metadata of deleted releases is kept.
@@ -226,12 +229,8 @@ Merge the latest Traffolio into your repository, keeping your own config, README
 git remote add traffolio https://github.com/zeikar/traffolio   # skip if already added
 git fetch traffolio
 git merge --no-commit --no-ff traffolio/main
-git checkout HEAD -- traffolio.config.yml README.md data assets
-git commit -m "Update Traffolio"
-git push
+(for p in traffolio.config.yml README.md data assets repos; do if git cat-file -e "HEAD:$p" 2>/dev/null; then git checkout HEAD -- "$p" || exit 1; fi; done) && git commit -m "Update Traffolio" && git push
 ```
-
-(`assets` exists after your first collection; drop it from the line before that.)
 
 A repository made from the template shares no history with Traffolio until its first update. For that one, in place of the merge line, run these two, which replace your files with Traffolio's before the line after them restores your own. Commit or stash your changes first: unlike a merge, they overwrite uncommitted work without asking.
 
