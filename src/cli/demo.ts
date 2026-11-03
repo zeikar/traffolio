@@ -4,7 +4,7 @@ import { buildDashboardModel } from "../reporter/aggregate.js";
 import { renderSection } from "../reporter/readme.js";
 import { readTopReferrers } from "../reporter/referrers.js";
 import { renderSparklineSvg } from "../reporter/sparkline.js";
-import { renderTrafficSvg } from "../reporter/svg.js";
+import { clonesChart, viewsChart } from "../reporter/svg.js";
 import { createStore } from "../storage/store.js";
 import type { MonthFile } from "../types.js";
 
@@ -28,11 +28,13 @@ async function main(): Promise<void> {
 
   const out = createStore(repoRoot);
   const files: [string, string][] = [
-    ["docs/demo/traffic.svg", renderTrafficSvg(model.series, { sampleLabel: true })],
+    ["docs/demo/views.svg", viewsChart(model.series, true)],
+    ["docs/demo/clones.svg", clonesChart(model.series, true)],
     [
       "docs/demo/README-section.md",
       renderSection(model, {
-        svgPath: "./traffic.svg",
+        viewsSvgPath: "./views.svg",
+        clonesSvgPath: "./clones.svg",
         sparklinePath: (id) => `./sparklines/${id}.svg`,
         sampleLabel: true,
         topReferrers,

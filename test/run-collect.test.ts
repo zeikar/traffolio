@@ -96,7 +96,9 @@ describe("runCollect", () => {
     expect(readme).toContain("My footer.");
     expect(readme).toContain("### Traffic — Data through 2026-10-25 (UTC)");
     expect(readme).not.toContain("placeholder");
-    expect((await stat(join(root, "assets/traffic.svg"))).isFile()).toBe(true);
+    expect((await stat(join(root, "assets/views.svg"))).isFile()).toBe(true);
+    expect((await stat(join(root, "assets/clones.svg"))).isFile()).toBe(true);
+    await expect(stat(join(root, "assets/traffic.svg"))).rejects.toThrow();
     expect((await readdir(join(root, "assets/sparklines"))).sort()).toEqual([
       "100001.svg",
       "100002.svg",

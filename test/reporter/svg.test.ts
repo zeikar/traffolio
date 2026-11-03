@@ -4,7 +4,7 @@ import {
   buildDashboardModel,
   type SeriesPoint,
 } from "../../src/reporter/aggregate.js";
-import { renderTrafficSvg } from "../../src/reporter/svg.js";
+import { clonesChart, renderChartSvg, viewsChart, type ChartSpec } from "../../src/reporter/svg.js";
 import { createStore } from "../../src/storage/store.js";
 import type { MonthFile } from "../../src/types.js";
 
@@ -22,10 +22,8 @@ beforeAll(async () => {
   series = buildDashboardModel(index, status, files).series;
 });
 
-function pathData(svg: string, metric: "views" | "clones"): string {
-  const match = svg.match(
-    new RegExp(`<path class="line ${metric}" d="([^"]*)"`),
-  );
+function pathData(svg: string, key: string): string {
+  const match = svg.match(new RegExp(`<path class="line ${key}" d="([^"]*)"`));
   expect(match).not.toBeNull();
   return match![1]!;
 }
@@ -51,86 +49,127 @@ const point = (
   partial,
 });
 
-describe("renderTrafficSvg", () => {
-  it("is byte-stable across calls", () => {
-    expect(renderTrafficSvg(series, { sampleLabel: true })).toBe(
-      renderTrafficSvg(series, { sampleLabel: true }),
-    );
+const PARTIAL_TEXT =
+  "partial day — one or more tracked repos have no data for that date";
+
+describe("README charts", () => {
+  it("are byte-stable across calls", () => {
+    expect(viewsChart(series, true)).toBe(viewsChart(series, true));
+    expect(clonesChart(series, true)).toBe(clonesChart(series, true));
   });
 
-  it("breaks each metric's line at missing days", () => {
-    const svg = renderTrafficSvg(series, { sampleLabel: false });
+  it("draw exactly one line per chart, broken at missing days", () => {
     expect(gapCount(series)).toBe(1);
-    for (const metric of ["views", "clones"] as const) {
-      expect(count(pathData(svg, metric), /M/g)).toBe(gapCount(series) + 1);
+    for (const [chart, key] of [
+      [viewsChart(series, false), "views"],
+      [clonesChart(series, false), "clones"],
+    ] as const) {
+      expect(count(chart, /<path class="line/g)).toBe(1);
+      expect(count(pathData(chart, key), /M/g)).toBe(gapCount(series) + 1);
     }
   });
 
-  it("marks partial days on both metrics", () => {
+  it("mark each partial day once per chart", () => {
     const partialDays = series.filter((p) => p.partial).length;
     expect(partialDays).toBeGreaterThan(0);
-    const svg = renderTrafficSvg(series, { sampleLabel: false });
-    expect(count(svg, /<circle class="partial"/g)).toBe(partialDays * 2);
-    expect(svg).toContain(
-      "partial day — one or more tracked repos have no data for that date",
-    );
+    for (const chart of [viewsChart(series, false), clonesChart(series, false)]) {
+      expect(count(chart, /<circle class="partial"/g)).toBe(partialDays);
+      expect(chart).toContain(PARTIAL_TEXT);
+    }
   });
 
-  it("draws no partial markers when no day is partial", () => {
+  it("draw no partial markers when no day is partial", () => {
     const full = [
       point("2026-01-01", 3),
       point("2026-01-02", 0),
       point("2026-01-03", 5),
     ];
-    expect(
-      count(
-        renderTrafficSvg(full, { sampleLabel: false }),
-        /<circle class="partial"/g,
-      ),
-    ).toBe(0);
+    expect(count(viewsChart(full, false), /<circle class="partial"/g)).toBe(0);
   });
 
-  it("keeps an isolated day visible as its own subpath", () => {
-    const svg = renderTrafficSvg(
+  it("keep an isolated day visible as its own subpath", () => {
+    const svg = viewsChart(
       [
         point("2026-01-01", null),
         point("2026-01-02", 4),
         point("2026-01-03", null),
       ],
-      { sampleLabel: false },
+      false,
     );
     expect(count(pathData(svg, "views"), /M/g)).toBe(1);
-    expect(count(svg, /<circle class="solo"/g)).toBe(2);
+    expect(count(svg, /<circle class="solo"/g)).toBe(1);
   });
 
-  it("shows the sample banner only when requested", () => {
-    expect(renderTrafficSvg(series, { sampleLabel: true })).toContain(
-      "SAMPLE DATA",
-    );
-    expect(renderTrafficSvg(series, { sampleLabel: false })).not.toContain(
-      "SAMPLE DATA",
-    );
+  it("show the sample banner only when requested", () => {
+    expect(viewsChart(series, true)).toContain("SAMPLE DATA");
+    expect(clonesChart(series, true)).toContain("SAMPLE DATA");
+    expect(viewsChart(series, false)).not.toContain("SAMPLE DATA");
   });
 
-  it("states the data date in UTC and has no script", () => {
-    const svg = renderTrafficSvg(series, { sampleLabel: true });
-    expect(svg).toContain(
+  it("have titles, state the data date in UTC and carry no script", () => {
+    const views = viewsChart(series, true);
+    expect(views).toContain("Daily views · last 30 days");
+    expect(clonesChart(series, true)).toContain("Daily clones · last 30 days");
+    expect(views).toContain(
       "Data through 2026-10-25 (UTC) · daily totals across tracked repos",
     );
-    expect(svg).not.toMatch(/<script/i);
+    expect(views).not.toMatch(/<script/i);
   });
 
-  it("renders a no-data placeholder for an empty series", () => {
-    const svg = renderTrafficSvg([], { sampleLabel: false });
+  it("render a no-data placeholder for an empty series", () => {
+    const svg = viewsChart([], false);
     expect(svg).toContain("No traffic data stored yet");
     expect(svg).toContain("UTC");
     expect(svg).not.toContain("<path");
     expect(svg).not.toMatch(/<script/i);
   });
 
-  it("escapes text taken from the series", () => {
-    const svg = renderTrafficSvg([point("<x&y>", 1)], { sampleLabel: false });
+  it("escape text taken from the series", () => {
+    const svg = viewsChart([point("<x&y>", 1)], false);
     expect(svg).toContain("&lt;x&amp;y&gt;");
     expect(svg).not.toContain("<x&y>");
+  });
+
+  it("use integer coordinates only", () => {
+    for (const chart of [viewsChart(series, false), clonesChart(series, false)]) {
+      for (const match of chart.matchAll(/ d="([^"]*)"/g)) {
+        expect(match[1]).not.toContain(".");
+      }
+    }
+  });
+});
+
+describe("renderChartSvg", () => {
+  const spec: ChartSpec = {
+    title: "T",
+    dates: ["2026-01-01", "2026-01-02", "2026-01-03"],
+    lines: [
+      { key: "a", label: "A", color: "#111111", values: [1, 2, 3] },
+      { key: "b", label: "B", color: "#222222", values: [1, null, 2], dashed: true },
+    ],
+    footer: "F",
+    emptyText: "Nothing",
+    sampleLabel: false,
+  };
+
+  it("emits stroke-dasharray only for dashed lines", () => {
+    const svg = renderChartSvg(spec);
+    expect(count(svg, /<path class="line/g)).toBe(2);
+    expect(svg.match(/<path class="line a"[^>]*>/)![0]).not.toContain("stroke-dasharray");
+    expect(svg.match(/<path class="line b"[^>]*>/)![0]).toContain("stroke-dasharray");
+  });
+
+  it("shows the partial legend item only when partial is given", () => {
+    expect(renderChartSvg(spec)).not.toContain(PARTIAL_TEXT);
+    expect(renderChartSvg({ ...spec, partial: [false, false, true] })).toContain(PARTIAL_TEXT);
+  });
+
+  it("renders the placeholder when every value is null", () => {
+    const svg = renderChartSvg({
+      ...spec,
+      lines: spec.lines.map((l) => ({ ...l, values: [null, null, null] })),
+    });
+    expect(svg).toContain("Nothing");
+    expect(svg).not.toContain("<path");
   });
 });

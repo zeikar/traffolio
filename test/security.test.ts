@@ -219,8 +219,10 @@ describe("sample/real data separation", () => {
     }
   });
 
-  it("docs/demo/traffic.svg is labelled SAMPLE DATA", async () => {
-    expect(await readFile(join(repoRoot, "docs/demo/traffic.svg"), "utf8")).toContain("SAMPLE DATA");
+  it("docs/demo/views.svg and clones.svg are labelled SAMPLE DATA", async () => {
+    for (const name of ["views", "clones"]) {
+      expect(await readFile(join(repoRoot, `docs/demo/${name}.svg`), "utf8")).toContain("SAMPLE DATA");
+    }
   });
 
   it("demo CLI reads only fixtures/demo, never the repo-root data/", async () => {

@@ -12,7 +12,8 @@ export class MarkerError extends Error {
 }
 
 export interface RenderOptions {
-  svgPath: string;
+  viewsSvgPath: string;
+  clonesSvgPath: string;
   /** Image path of a row's trend sparkline, by repo id. */
   sparklinePath: (id: string) => string;
   sampleLabel: boolean;
@@ -67,7 +68,7 @@ function status(row: DashboardRow): string {
 
 function repoTable(rows: DashboardRow[], sparklinePath: (id: string) => string): string[] {
   const lines = [
-    "| Repository | Trend (30d) | Visibility | Views 7d | Views 30d | Clones 7d | Clones 30d | Stars | Forks | Status |",
+    "| Repository | Views trend (30d) | Visibility | Views 7d | Views 30d | Clones 7d | Clones 30d | Stars | Forks | Status |",
     "| --- | --- | --- | ---: | ---: | ---: | ---: | ---: | ---: | --- |",
   ];
   for (const r of rows) {
@@ -140,7 +141,11 @@ export function renderSection(model: DashboardModel, opts: RenderOptions): strin
     );
   }
 
-  out.push(`![Traffic over the last 30 days](${opts.svgPath})`, "");
+  out.push(
+    `![Views over the last 30 days](${opts.viewsSvgPath})`,
+    `![Clones over the last 30 days](${opts.clonesSvgPath})`,
+    "",
+  );
   if (opts.topReferrers) out.push(...referrerTable(opts.topReferrers));
   out.push(
     "All dates and windows are UTC.  ",

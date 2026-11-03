@@ -18,7 +18,7 @@ import { readTopReferrers } from "./reporter/referrers.js";
 import { renderSparklineSvg } from "./reporter/sparkline.js";
 import { renderSummary, repoErrorLabel } from "./reporter/summary.js";
 import type { RepoErrorEntry, SummaryCounts, SummaryInput } from "./reporter/summary.js";
-import { renderTrafficSvg } from "./reporter/svg.js";
+import { clonesChart, viewsChart } from "./reporter/svg.js";
 import { updateIndex, updateStatus } from "./storage/index-status.js";
 import type { RepoResult } from "./storage/index-status.js";
 import { upsertDays } from "./storage/merge.js";
@@ -85,7 +85,8 @@ interface Progress {
   perRepoErrors: RepoErrorEntry[];
 }
 
-const SVG_PATH = "assets/traffic.svg";
+const VIEWS_SVG_PATH = "assets/views.svg";
+const CLONES_SVG_PATH = "assets/clones.svg";
 const sparklinePath = (id: string): string => `assets/sparklines/${id}.svg`;
 
 const VISIBILITY_MESSAGES = {
@@ -313,12 +314,19 @@ async function writeResults(
   }
 
   const model = buildDashboardModel(index, status, monthFilesByRepo);
-  const svg = renderTrafficSvg(model.series, { sampleLabel: false });
+  const views = viewsChart(model.series, false);
+  const clones = clonesChart(model.series, false);
   const sparklines = model.rows.map((row) => [sparklinePath(row.id), renderSparklineSvg(row.series)] as const);
   const topReferrers = await readTopReferrers(store, index, extras.referrers);
   const nextReadme = replaceSection(
     readme,
-    renderSection(model, { svgPath: SVG_PATH, sparklinePath, sampleLabel: false, topReferrers }),
+    renderSection(model, {
+      viewsSvgPath: VIEWS_SVG_PATH,
+      clonesSvgPath: CLONES_SVG_PATH,
+      sparklinePath,
+      sampleLabel: false,
+      topReferrers,
+    }),
   );
 
   const changed: boolean[] = [];
@@ -326,7 +334,8 @@ async function writeResults(
   changed.push(
     await store.writeIndex(index),
     await store.writeStatus(status),
-    await store.writeTextFile(SVG_PATH, svg),
+    await store.writeTextFile(VIEWS_SVG_PATH, views),
+    await store.writeTextFile(CLONES_SVG_PATH, clones),
     await store.writeTextFile("README.md", nextReadme),
   );
   for (const [path, text] of sparklines) changed.push(await store.writeTextFile(path, text));
