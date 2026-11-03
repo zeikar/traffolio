@@ -219,9 +219,9 @@ describe("sample/real data separation", () => {
     }
   });
 
-  it("docs/demo/views.svg and clones.svg are labelled SAMPLE DATA", async () => {
+  it("docs/demo/assets/views.svg and clones.svg are labelled SAMPLE DATA", async () => {
     for (const name of ["views", "clones"]) {
-      expect(await readFile(join(repoRoot, `docs/demo/${name}.svg`), "utf8")).toContain("SAMPLE DATA");
+      expect(await readFile(join(repoRoot, `docs/demo/assets/${name}.svg`), "utf8")).toContain("SAMPLE DATA");
     }
   });
 
