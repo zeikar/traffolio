@@ -5,9 +5,10 @@
 
 GitHub's Traffic API only returns the last 14 days of views and clones. Traffolio runs on GitHub Actions, collects views and clones for your repositories every day, and stores the history as JSON in your own **private** repository, with a dashboard rendered right here in this README.
 
-![Traffolio's local dashboard with sample data: Views and Clones charts over 30 days, summary cards and star history](docs/dashboard.png)
-
-*The [local dashboard](#local-dashboard), shown with sample data. The same dashboard is [live for the demo instance](https://zeikar.dev/traffolio-demo/), published with [GitHub Pages](#github-pages-dashboard); the README section below is live too.*
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="docs/hero-dark.png">
+  <img alt="A daily views line chart: GitHub shows only the last 14 days, while Traffolio keeps every day since you started" src="docs/hero-light.png">
+</picture>
 
 > **No server. No database. Just GitHub.** means there is nothing for you to host or operate. It does not mean GitHub infrastructure is unused: Actions runs the collector, Git stores the data, and the README displays it.
 
@@ -83,6 +84,10 @@ The default `GITHUB_TOKEN` cannot read other repositories' traffic, so it cannot
 ## Local dashboard
 
 The README shows a summary. For a daily Views chart and a daily Clones chart (with unique visitors and cloners when one repository is selected), period switching (7 / 30 / 90 days / all) and sorting, generate a local dashboard from a clone of your Traffolio repository:
+
+![The local dashboard with sample data: summary cards and daily Views and Clones charts over 90 days](docs/dashboard.png)
+
+*Shown with sample data. The same dashboard is [live for the demo instance](https://zeikar.dev/traffolio-demo/), published with [GitHub Pages](#github-pages-dashboard).*
 
 ```sh
 git clone <your Traffolio repository> && cd <it>
