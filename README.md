@@ -39,7 +39,7 @@ It is not:
 2. It lists your owned repositories, applies the filters in `traffolio.config.yml`, and fetches the latest 14 days of daily views and clones for each one.
 3. The results are merged into JSON files under `data/`. Each day is overwritten (upserted) by repository ID and UTC date, so re-running never double-counts.
 4. For the same repositories it also records star and fork history, a snapshot of the top referrers and popular pages, and release download counts (see [Data](docs/data.md)). These extras run after the traffic and never change how the traffic part of the run is judged.
-5. The README dashboard (between the `TRAFFOLIO` markers), `assets/views.svg`, `assets/clones.svg`, the trend images in `assets/sparklines/`, and one page per repository in `repos/<repo_id>.md` with its charts in `assets/repos/<repo_id>/` are regenerated from that JSON. Only that marked block is rewritten; the rest of this README is yours.
+5. The README dashboard (between the `TRAFFOLIO` markers), `assets/views.svg`, `assets/clones.svg`, the trend images in `assets/sparklines/`, and one page per repository in `repos/<repo_id>.md` with its charts in `assets/repos/<repo_id>/` are regenerated from that JSON. Only that marked block is rewritten; the rest of this README is yours. Keep exactly one `<!-- TRAFFOLIO:START -->` and one `<!-- TRAFFOLIO:END -->`, in that order: otherwise the run stops before collecting and writes nothing (see [Troubleshooting](docs/operations.md#troubleshooting)).
 6. If any file changed, the workflow commits it with `GITHUB_TOKEN`. If nothing changed, there is no commit.
 
 ## Setup
@@ -73,6 +73,12 @@ git clone <your Traffolio repository> && cd <it>
 npm install
 npm run dashboard   # writes dashboard.html and prints its file:// URL
 ```
+
+Options go after `--`, for example `npm run dashboard -- --out ~/traffic.html`:
+
+- `--data <dir>`: the Traffolio repository to read, the directory that contains `data/` (default: the current directory)
+- `--out <file>`: where to write the page (default: `dashboard.html` in that directory)
+- `--public`: build the published variant, without the local path; refused if `data/index.json` lists a private repository (see [GitHub Pages dashboard](docs/public-mode.md#github-pages-dashboard))
 
 It also shows star history (cumulative stars and new stars per period), the latest top referrers and pages, and release downloads per release with a daily-downloads chart; `#repo=<repo_id>` at the end of the file URL opens one repository directly.
 
