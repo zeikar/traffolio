@@ -102,7 +102,7 @@ What every failure looks like, and the permissions in detail: [Security and perm
 | `include_forks` | `false` | Also collect forks |
 | `include_archived` | `false` | Also collect archived repositories |
 | `include_self` | `false` | Also collect the Traffolio repository itself. Still requires `include_private: true`, since Traffolio is private (except in public mode) |
-| `public_mode` (top level) | `false` | Allow a public Traffolio repository to collect and publish the selected repositories' numbers; see [Public mode](#public-mode). Cannot be combined with `include_private: true` |
+| `public_mode` (top level) | `false` | Allow a public Traffolio repository to collect and publish the selected repositories' numbers; see [Public mode](#public-mode). In a public repository, cannot be combined with `include_private: true` |
 | `pages` (top level) | `false` | Publish the dashboard to GitHub Pages on each run. Only takes effect in a public repository with `public_mode: true`; see [GitHub Pages dashboard](docs/public-mode.md#github-pages-dashboard) |
 
 Matching rules:

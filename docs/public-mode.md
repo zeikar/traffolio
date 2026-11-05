@@ -7,7 +7,7 @@
 - **Everything it produces is public.** The traffic, star/fork, referrer and release data of the selected repositories, the README dashboard, and the repository's Actions logs and run Summaries can be read by anyone.
 - **Private repositories are never selected.** `include_private: true` is refused with a config error, and a run stops with nothing written if `data/index.json` already holds data about a private repository (or cannot be read): start from a clean repository rather than publishing data from a private past.
 - **A tracked repository that turns private** is no longer collected, and its index entry keeps its previous (public) metadata, only marked `missing`, so the dashboard does not reveal the change or its new name. Its earlier data stays, since it was already public.
-- Logs, the Summary and outputs name only the selected repositories; other repositories appear only in the discovered/selected counts.
+- Logs and the Summary name only the selected repositories; other repositories appear only in the discovered/selected counts. The README table and the repository pages also keep repositories tracked earlier (excluded or `missing` now), with their earlier public data. A repository never selected appears nowhere.
 - **Use a separate fine-grained token** for the public repository's `TRAFFIC_TOKEN`, limited to the repositories you publish (Repository access: **Only select repositories**), so it cannot read traffic of anything else.
 - In a private repository `public_mode` has no effect; the run logs a notice and collects as usual.
 
